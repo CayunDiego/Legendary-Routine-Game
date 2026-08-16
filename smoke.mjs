@@ -14,6 +14,9 @@ function ctxStub() {
       if (p === 'createImageData' || p === 'getImageData')
         return () => ({ data: new Uint8ClampedArray(4 * 64 * 64), width: 64, height: 64 });
       if (p === 'measureText') return () => ({ width: 10 });
+      // el aura de XP arma un gradiente y le pide addColorStop al resultado
+      if (p === 'createRadialGradient' || p === 'createLinearGradient')
+        return () => ({ addColorStop: noop });
       if (p in t) return t[p];
       return noop;
     },
@@ -151,6 +154,7 @@ const motor = await vite.ssrLoadModule('/src/engine/motor.js');
 const dlg = await vite.ssrLoadModule('/src/state/dialogo.js');
 const uiSt = await vite.ssrLoadModule('/src/state/ui.js');
 const logica = await vite.ssrLoadModule('/src/state/gameLogic.js');
+const zonaMerli = await vite.ssrLoadModule('/src/config/merli.js');
 console.log('modulo importado, exports:', Object.keys(mod), '\n');
 
 /* config.js trae la URL del Worker de verdad, que es lo que necesita el juego
@@ -254,6 +258,66 @@ paso('baile: fuera del juego no baila', () => {
   motor.actualizarJugadora(16);
   if (motor.jugadora.bailando) throw new Error('bailo con el menu abierto');
   uiSt.setModo('juego');
+});
+
+/* Merlí: deambula solo por config/merli.js#ZONA_MERLI. Sin pathfinding real,
+   así que lo que puede romperse es que se salga de la zona, que atraviese
+   algo sólido, o que seguir caminando con el juego en pausa. */
+paso('merli: arranca dentro de la zona', () => {
+  if (!zonaMerli.dentroDeZonaMerli(motor.merli.tx, motor.merli.ty)) {
+    throw new Error(`posicion inicial (${motor.merli.tx},${motor.merli.ty}) fuera de la zona`);
+  }
+});
+
+paso('merli: camina sola con el tiempo, sin salirse de la zona ni de lo solido', () => {
+  uiSt.setModo('juego');
+  let pasos = 0;
+  for (let i = 0; i < 400; i++) {
+    const antes = motor.merli.moviendo;
+    motor.actualizarMerli(50);
+    if (antes && !motor.merli.moviendo) pasos++;   // completó un paso
+    if (!zonaMerli.dentroDeZonaMerli(motor.merli.tx, motor.merli.ty)) {
+      throw new Error(`se salio de la zona: (${motor.merli.tx},${motor.merli.ty})`);
+    }
+    if (!motor.tilePasable(motor.merli.tx, motor.merli.ty)) {
+      throw new Error(`quedo parada en una casilla solida: (${motor.merli.tx},${motor.merli.ty})`);
+    }
+  }
+  if (pasos === 0) throw new Error('nunca se movio en 400 frames simulados (20s)');
+});
+
+paso('merli: fuera del juego se queda quieta', () => {
+  uiSt.setModo('menu');
+  const antes = { tx: motor.merli.tx, ty: motor.merli.ty, px: motor.merli.px, py: motor.merli.py };
+  for (let i = 0; i < 50; i++) motor.actualizarMerli(50);
+  if (motor.merli.tx !== antes.tx || motor.merli.ty !== antes.ty || motor.merli.px !== antes.px || motor.merli.py !== antes.py) {
+    throw new Error('se movio con el menu abierto');
+  }
+  uiSt.setModo('juego');
+});
+
+/* Aura de XP: el estallido lo dispara el motor mirando EST.nivel, no un aviso
+   de juego.js. Lo que puede romperse es que salte donde no corresponde —al
+   cargar una partida ya avanzada, o cuando la nube trae un nivel más bajo— o
+   que se quede prendido para siempre. */
+paso('aura: subir de nivel dispara el estallido y se apaga solo', () => {
+  const est = logica.obtenerEstado();
+  motor.actualizarAura(16);                       // parte del nivel que haya
+  if (motor.auraActiva()) throw new Error('estallo sin subir de nivel');
+
+  est.nivel += 1;
+  motor.actualizarAura(16);
+  if (!motor.auraActiva()) throw new Error('no estallo al subir de nivel');
+
+  for (let i = 0; i < 100; i++) motor.actualizarAura(50);   // 5s, de sobra
+  if (motor.auraActiva()) throw new Error('el estallido no se apago');
+});
+
+paso('aura: un nivel mas bajo (partida reemplazada) no estalla', () => {
+  const est = logica.obtenerEstado();
+  est.nivel = Math.max(1, est.nivel - 3);
+  motor.actualizarAura(16);
+  if (motor.auraActiva()) throw new Error('estallo al bajar de nivel');
 });
 
 paso('cambio de dia (visibilitychange)', () => { for (const fn of oyentesDoc.get('visibilitychange') || []) fn({}); });

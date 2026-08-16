@@ -2,7 +2,7 @@
 
 Estado: publicado, con guardado en la nube (2026-08-16).
 Verificado con `npm run test`: lint 0 errores, `smoke:worker` 12 pasos verdes,
-`smoke` 74 pasos verdes.
+`smoke` 77 pasos verdes.
 
 ---
 
@@ -139,27 +139,38 @@ que este juego necesita.
 
 ---
 
-## 4e. La hoja del baile es un derivado que no se puede rehacer
+## 4e. Las hojas de sprites son derivados que no se pueden rehacer
 
-**Severidad: baja.**
+**Severidad: baja** (pero ya causó una pérdida real, ver abajo).
 
-`src/assets/Kath_baile_1.png` es el original que salió del generador: 1792 x 2390
-y 5,4 MB, con fondo gris y colores sucios (1529 colores distintos donde la hoja
-de caminar usa 28). Lo que usa el juego es `src/assets/kath_baile.png` (96 x 128,
-5,4 kB), que salió de reducir el original a su grilla nativa, sacarle el fondo y
-pegarle la paleta de la hoja de caminar.
+Dos personajes tienen el mismo patrón: un original grande que salió del
+generador y una hoja chica derivada, que es la que usa el juego.
 
-Dos cosas quedaron flojas:
+| Original (material de trabajo) | Derivado (lo que importa el juego) |
+|---|---|
+| `Kath_baile_1.png` — 1792 x 2390, 5,4 MB, fondo gris, 1529 colores. Ya no está en el árbol: se borró, pero sigue recuperable del commit `0a66a56` | `src/assets/kath_baile.png` — 96 x 128, 5,4 kB |
+| `src/assets/merli.png` — 2816 x 1536, 7,1 MB, fondo a cuadros, 9 filas | `src/assets/merli_hoja.png` — 570 x 168, 59 kB |
 
-- El script que hizo esa conversión fue de una sola vez y no está en el repo. Si
-  mañana llega `Kath_baile_2.png` hay que volver a escribirlo.
-- El original de 5,4 MB vive en `src/assets/` sin que nadie lo importe. No entra
-  a la build (Rollup sólo emite lo importado, se verificó: el `dist` lleva los
-  5,38 kB de la hoja chica y nada más), pero pesa en el repo y confunde: parece
-  un asset del juego y es material de trabajo.
+Tres cosas quedaron flojas:
+
+- Los scripts que hicieron esas conversiones fueron de una sola vez y no están
+  en el repo. Si mañana llega otra hoja hay que volver a escribirlos, y no es
+  trivial: cada una necesitó detectar bandas de filas y columnas, separar el
+  fondo del antialiasing, normalizar los cuadros a una celda común y elegir el
+  método de reducción (promedio de área, no color dominante).
+- El original de Merlí (7,1 MB) vive en `src/assets/` sin que nadie lo importe.
+  No entra a la build (Rollup sólo emite lo importado, se verificó), pero pesa
+  en el repo y confunde: parece un asset del juego y es material de trabajo. Se
+  decidió versionarlo igual, a cambio de no volver a perderlo.
+- **Ya se perdió un original por esto.** El primer `Merli.png` se pisó al
+  copiar el derivado como `merli.png`: NTFS no distingue mayúsculas, así que
+  para el sistema de archivos eran el mismo archivo. Por eso ahora el derivado
+  se llama `merli_hoja.png` y no una variante de mayúsculas del original.
 
 **Arreglo:** un `scripts/hoja-sprites.mjs` que haga la conversión, y mover los
-originales a una carpeta fuera de `src/` (o dejarlos fuera del repo).
+originales a una carpeta fuera de `src/` (`arte-fuente/`, por ejemplo), que deje
+claro qué es material de trabajo. Mientras tanto, la regla mínima es que
+derivado y original nunca se distingan sólo por mayúsculas.
 
 ---
 

@@ -1,6 +1,10 @@
 import { MAPA, SOLIDOS, OBJETOS, INICIO } from '../config/mapa.js';
-import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO } from '../config/sprites.js';
+import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO, SPRITE_MERLI } from '../config/sprites.js';
 import { FLAGS } from '../config/flags.js';
+import { dentroDeZonaMerli } from '../config/merli.js';
+/* niveles.js no importa nada, así que traerlo acá no arma el ciclo que sí
+   armaría pedirle xpNecesaria() a gameLogic.js (ver el comentario de allá). */
+import { xpNecesaria } from '../state/niveles.js';
 import { TILE_SRC, S, TILE } from './drawing.js';
 import { TILES } from './tiles.js';
 import { ART_OBJ, SPR } from './objetos.js';
@@ -46,6 +50,7 @@ let cv, ctx, vpW = 0, vpH = 0, dpr = 1;
 let hojaSprite = null;              // sprite sheet de la jugadora
 let hojaBaile = null;               // hoja del baile (mismo formato que la de caminar)
 let hojaDiego = null;               // sprite sheet de Diego (mismo formato)
+let hojaMerli = null;               // hoja de Merlí (ver config/sprites.js)
 const FRAME_W = 24, FRAME_H = 32;   // tamaño de cada frame del sheet
 const PIES = 30;                    // y donde terminan los pies dentro del frame
 const ESC_JUG = 3;                  // escala del sprite (3 = mismo tamaño de píxel que el escenario)
@@ -109,6 +114,43 @@ function pasoBaile(i, t) {
   return secuencia[secuencia.length - 1];
 }
 
+/* Aura de XP: un halo detrás de Kath que crece a medida que se llena la barra
+   del nivel y estalla cuando sube. Es todo canvas — no hay arte nuevo — así que
+   los números de acá son la única forma de tocarla.
+
+   El color sale de la lista por nivel: el ciclo es más corto que la curva de
+   niveles a propósito, la idea es que se note que cambió, no llevar la cuenta. */
+const AURA_COLORES = [
+  [126, 200, 255],   // celeste
+  [165, 139, 255],   // violeta
+  [255, 139, 209],   // rosa
+  [255, 209, 102],   // dorado
+  [124, 255, 196],   // verde agua
+];
+
+/* Los radios se miden contra el sprite, que es de 72 x 96 en pantalla
+   (FRAME_W x ESC_JUG). El halo se dibuja DEBAJO de Kath, así que todo lo que
+   quede dentro de su silueta no se ve: cualquier radio menor a ~40 es un aura
+   invisible por más opaca que sea.
+
+   Por eso lo que crece con la barra es sobre todo la opacidad, no el tamaño:
+   si el radio arrancara en cero, media barra se iría escondida atrás del
+   cuerpo y el aura aparecería de golpe sobre el final. Arranca pegada a la
+   silueta y transparente del todo — con la barra en cero no se dibuja nada — y
+   se va encendiendo mientras se abre un poco. */
+const AURA = {
+  rMin: 40,          // radio con la barra en cero: pegado a la silueta, no asoma
+  rMax: 54,          // radio con la barra llena
+  alfa: 0.55,        // opacidad con la barra llena
+  alfaMin: 0,        // qué parte de esa opacidad tiene con la barra en cero
+  brillo: 0.42,      // dónde queda el anillo más brillante (0 centro, 1 borde)
+  pulsoMs: 1600,     // cuánto tarda una respiración del halo
+  pulso: 0.07,       // cuánto crece y decrece al respirar
+  estalloMs: 950,    // lo que dura el estallido al subir de nivel
+  estalloR: 3.2,     // hasta cuántas veces el radio llega el estallido
+  estalloAlfa: 0.8,  // con cuánto arranca el estallido
+};
+
 const cam = { x: 0, y: 0 };
 const solido = [];                  // grilla de colisión
 const objPorTile = new Map();       // "x,y" -> objeto
@@ -123,6 +165,27 @@ const jugadora = {
 };
 
 const bicho = { px: 0, py: 0, dir: 0, visible: false, cola: [] };
+
+/* Merlí: gato suelto que deambula solo por config/merli.js#ZONA_MERLI (no
+   sigue a la jugadora como el bicho, ni depende de una interacción). Arranca
+   en una casilla del dormitorio que ya se sabe caminable, igual que INICIO. */
+const MERLI_MOV_MS = 260;                 // paso más lento y relajado que el de la jugadora
+const MERLI_ESPERA = [500, 2200];         // rango de pausa entre decisiones (ms)
+const MERLI_QUIETO_PROB = 0.35;           // a veces la decisión es "quedarse un rato más"
+
+/* Celda de la hoja (ver config/sprites.js): 10 cuadros de caminata x 4
+   direcciones, en el mismo orden que DIRS (0 abajo, 1 izq, 2 der, 3 arriba).
+   Se dibuja 1:1, sin reescalar, que es lo que la deja nítida. */
+const MERLI_FRAME_W = 57, MERLI_FRAME_H = 42;
+const MERLI_CUADROS = 10;
+const MERLI_CUADRO_MS = 70;               // el ciclo entero dura 700 ms
+
+const merli = {
+  tx: 7, ty: 4, px: 7 * TILE, py: 4 * TILE,
+  dir: 0, tAnim: 0,
+  moviendo: false, t: 0, desdeX: 0, desdeY: 0,
+  espera: 800,
+};
 
 const input = { dir: -1, a: false, aEdge: false };
 
@@ -266,6 +329,72 @@ function actualizarBicho() {
   bicho.py += (dest.y - bicho.py) * 0.16;
 }
 
+/* Merlí no sigue a nadie: cada tanto sortea una casilla vecina dentro de su
+   zona y camina hasta ahí sola, con pausas entre paso y paso — nada de
+   pathfinding, sólo un paseo creíble. Se congela fuera de 'juego' igual que
+   la jugadora, para no seguir caminando con el menú abierto. */
+function actualizarMerli(dt) {
+  if (!juego.juegoActivo()) return;
+
+  if (merli.moviendo) {
+    merli.t += dt;
+    // El reloj de la animación sólo corre mientras camina, y no se reinicia en
+    // cada casilla: así dos pasos seguidos siguen el ciclo en vez de saltar de
+    // vuelta al primer cuadro.
+    merli.tAnim += dt;
+    const p = Math.min(1, merli.t / MERLI_MOV_MS);
+    merli.px = merli.desdeX + (merli.tx * TILE - merli.desdeX) * p;
+    merli.py = merli.desdeY + (merli.ty * TILE - merli.desdeY) * p;
+    if (p >= 1) {
+      merli.moviendo = false;
+      merli.espera = MERLI_ESPERA[0] + Math.random() * (MERLI_ESPERA[1] - MERLI_ESPERA[0]);
+    }
+    return;
+  }
+
+  if (merli.espera > 0) { merli.espera -= dt; return; }
+
+  const candidatos = DIRS
+    .map((d, i) => ({ dir: i, nx: merli.tx + d.dx, ny: merli.ty + d.dy }))
+    .filter((c) => dentroDeZonaMerli(c.nx, c.ny) && tilePasable(c.nx, c.ny));
+
+  if (!candidatos.length || Math.random() < MERLI_QUIETO_PROB) {
+    merli.espera = MERLI_ESPERA[0] + Math.random() * (MERLI_ESPERA[1] - MERLI_ESPERA[0]);
+    return;
+  }
+
+  const elegido = candidatos[Math.floor(Math.random() * candidatos.length)];
+  merli.dir = elegido.dir;
+  merli.desdeX = merli.px; merli.desdeY = merli.py;
+  merli.tx = elegido.nx; merli.ty = elegido.ny;
+  merli.t = 0; merli.moviendo = true;
+}
+
+/* --- aura ---------------------------------------------------------------- */
+/* El estallido se dispara mirando EST.nivel en vez de que juego.js avise cuando
+   da XP: así vale para todo lo que suba de nivel, lo que hay hoy y lo que se
+   agregue después, sin acordarse de tocar dos lados.
+
+   La primera vuelta sólo anota el nivel: si no, abrir una partida guardada en
+   nivel 7 estallaría de entrada. Y si el nivel baja (reemplazo de partida desde
+   la nube o desde un código) tampoco es un logro: se anota y listo. */
+let auraNivel = -1;                 // último nivel visto (-1 = todavía ninguno)
+let auraEstallido = 0;              // ms que le quedan al estallido
+
+function actualizarAura(dt) {
+  const nivel = juego.estado().nivel || 1;
+  if (auraNivel < 0 || nivel < auraNivel) auraNivel = nivel;
+  else if (nivel > auraNivel) {
+    auraEstallido = AURA.estalloMs;
+    auraNivel = nivel;
+  }
+  if (auraEstallido > 0) auraEstallido = Math.max(0, auraEstallido - dt);
+}
+
+/* Sólo para la prueba: el estallido no deja rastro en el estado del juego, y
+   sin esto no hay forma de mirar desde afuera si salió. */
+function auraActiva() { return auraEstallido > 0; }
+
 /* --- render -------------------------------------------------------------- */
 let tiempoAnim = 0;
 
@@ -322,11 +451,13 @@ function dibujar(dt) {
   }
   lista.push({ tipo: 'jug', base: (jugadora.py + TILE) });
   if (bicho.visible) lista.push({ tipo: 'bicho', base: bicho.py + TILE - 1 });
+  lista.push({ tipo: 'merli', base: merli.py + TILE - 1 });
   lista.sort((a, b) => a.base - b.base);
 
   for (const it of lista) {
     if (it.tipo === 'obj') dibujarObjeto(it.o);
     else if (it.tipo === 'jug') dibujarJugadora();
+    else if (it.tipo === 'merli') dibujarMerli();
     else dibujarBicho();
   }
 
@@ -418,10 +549,54 @@ function dibujarPantallaTele(dx, dy) {
   ctx.fill();
 }
 
+/* El halo, centrado en el cuerpo de Kath. Va con 'lighter' porque es luz que
+   ella emite: sobre el piso oscuro del cuarto y sobre el césped se suma en vez
+   de tapar, que es lo que hace que se lea como resplandor y no como una mancha. */
+function dibujarAura(cx, cy) {
+  const est = juego.estado();
+  const nivel = est.nivel || 1;
+  const progreso = Math.min(1, (est.xp || 0) / xpNecesaria(nivel));
+  const [r, g, b] = AURA_COLORES[(nivel - 1) % AURA_COLORES.length];
+
+  const pulso = 1 + Math.sin((tiempoAnim / AURA.pulsoMs) * Math.PI * 2) * AURA.pulso;
+  let radio = (AURA.rMin + (AURA.rMax - AURA.rMin) * progreso) * pulso;
+  let alfa = AURA.alfa * (AURA.alfaMin + (1 - AURA.alfaMin) * progreso);
+
+  // El estallido pisa al halo de siempre: sale del tamaño que tenía, se abre y
+  // se apaga. Se toma el máximo para que el halo no lo achique sobre el final.
+  if (auraEstallido > 0) {
+    const p = 1 - auraEstallido / AURA.estalloMs;   // 0 recién subido -> 1 apagado
+    radio = radio * (1 + (AURA.estalloR - 1) * p);
+    alfa = Math.max(alfa, AURA.estalloAlfa * (1 - p));
+  }
+  // Recién subida de nivel la barra vuelve a cero y el aura se apaga del todo:
+  // esta salida es la que hace que "sin XP" sea nada, no un halo mínimo.
+  if (alfa <= 0.01) return;
+
+  // Lo más brillante no va en el centro sino en `brillo`, más o menos donde
+  // termina la silueta: el centro queda tapado por ella y lo que se ve es el
+  // anillo de afuera, así que ahí es donde conviene poner la luz.
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radio);
+  grad.addColorStop(0, `rgba(${r},${g},${b},${alfa * 0.8})`);
+  grad.addColorStop(AURA.brillo, `rgba(${r},${g},${b},${alfa})`);
+  grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, radio, radio * 1.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function dibujarJugadora() {
   const w = FRAME_W * ESC_JUG, h = FRAME_H * ESC_JUG;
   const dx = Math.round(jugadora.px - cam.x + TILE / 2 - w / 2);
   const dy = Math.round(jugadora.py - cam.y + TILE - PIES * ESC_JUG - 3);
+
+  // detrás de todo lo suyo: primero el aura, después la sombra y el sprite
+  dibujarAura(dx + w / 2, dy + h * 0.5);
 
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
   ctx.beginPath();
@@ -462,6 +637,28 @@ function dibujarBicho() {
   ctx.drawImage(img, dx, dy, TILE * 0.76, TILE * 0.76);
 }
 
+/* A diferencia del bicho, la hoja de Merlí trae las 4 direcciones dibujadas de
+   verdad (no un espejo): la fila es `dir` directo, la columna es el cuadro de
+   la caminata. Quieto se queda en el primero — los cuadros laterales son un
+   ciclo de pasos, así que animarlos parada se vería como caminar en el lugar.
+   Sin la hoja cargada no se dibuja nada, igual que Diego. */
+function dibujarMerli() {
+  if (!hojaMerli) return;
+  const w = MERLI_FRAME_W, h = MERLI_FRAME_H;   // 1:1, sin reescalar
+  const dx = Math.round(merli.px - cam.x + TILE / 2 - w / 2);
+  const dy = Math.round(merli.py - cam.y + TILE - h - 4);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(dx + w / 2, dy + h + 1, w * 0.3, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const f = merli.moviendo
+    ? Math.floor(merli.tAnim / MERLI_CUADRO_MS) % MERLI_CUADROS
+    : 0;
+  ctx.drawImage(hojaMerli, f * MERLI_FRAME_W, merli.dir * MERLI_FRAME_H, MERLI_FRAME_W, MERLI_FRAME_H, dx, dy, w, h);
+}
+
 /* luz según la hora real: mañana cálida, tarde neutra, noche azulada */
 function aplicarLuzAmbiente() {
   const h = new Date().getHours();
@@ -490,8 +687,9 @@ function cargarSprite(listo) {
     cargarImagen(SPRITE_BAILE),
     cargarImagen(VIDEO_TELE),
     FLAGS.diego ? cargarImagen(SPRITE_DIEGO) : Promise.resolve(null),
-  ]).then(([sp, bl, tv, dg]) => {
-    hojaSprite = sp; hojaBaile = bl; hojaTele = tv; hojaDiego = dg; listo();
+    cargarImagen(SPRITE_MERLI),
+  ]).then(([sp, bl, tv, dg, mr]) => {
+    hojaSprite = sp; hojaBaile = bl; hojaTele = tv; hojaDiego = dg; hojaMerli = mr; listo();
   });
 }
 
@@ -501,6 +699,8 @@ function bucle(ts) {
   ultimo = ts;
   actualizarJugadora(dt);
   actualizarBicho();
+  actualizarMerli(dt);
+  actualizarAura(dt);
   actualizarCamara(false);
   dibujar(dt);
   requestAnimationFrame(bucle);
@@ -519,8 +719,9 @@ function arrancarBucle() {
 
 export {
   conectar, montarCanvas, arrancarBucle, cargarSprite,
-  jugadora, bicho, input,
+  jugadora, bicho, merli, input,
   construirMundo, tilePasable, objetoFrente,
-  ajustarCanvas, actualizarCamara, actualizarJugadora, actualizarBicho,
+  ajustarCanvas, actualizarCamara, actualizarJugadora, actualizarBicho, actualizarMerli,
+  actualizarAura, auraActiva,
   registrarCola, dibujar, bailar, BAILE,
 };
