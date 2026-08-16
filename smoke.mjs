@@ -190,6 +190,41 @@ paso('mover opcion con flechas', () => dlg.moverOpcion(1));
 paso('avanzar dialogo', () => dlg.avanzarDialogo());
 paso('dialogo con premio y fanfarria', () => mod.dialogo([{ t: 'x', premio: '+1 XP', fanfarria: true }, { t: 'y', carta: true }]));
 paso('cerrar dialogo', () => dlg.cerrarDialogo());
+
+/* El baile: sale de una hoja de sprites distinta y de un reloj de inactividad,
+   así que es fácil dejarlo prendido para siempre o que no arranque nunca. */
+paso('baile: dos toques de A sin nada enfrente', () => {
+  uiSt.setModo('juego');
+  motor.input.dir = -1;
+  motor.jugadora.moviendo = false;
+  motor.jugadora.bailando = false;
+  // mirando a algún lado libre: con un objeto enfrente, A es interactuar
+  for (let d = 0; d < 4 && motor.objetoFrente(); d++) motor.jugadora.dir = d;
+  if (motor.objetoFrente()) throw new Error('esta rodeada de objetos, no sirve de prueba');
+  mod.pulsarA(); mod.pulsarA();
+  if (!motor.jugadora.bailando) throw new Error('no se puso a bailar');
+});
+
+paso('baile: moverse lo corta', () => {
+  motor.input.dir = 0;
+  motor.actualizarJugadora(16);
+  motor.input.dir = -1;
+  if (motor.jugadora.bailando) throw new Error('siguio bailando con el d-pad apretado');
+});
+
+paso('baile: la inactividad lo arranca sola', () => {
+  motor.jugadora.moviendo = false;
+  motor.actualizarJugadora(motor.BAILE.esperaMs + 1);
+  if (!motor.jugadora.bailando) throw new Error('no arranco por inactividad');
+});
+
+paso('baile: fuera del juego no baila', () => {
+  uiSt.setModo('menu');
+  motor.actualizarJugadora(16);
+  if (motor.jugadora.bailando) throw new Error('bailo con el menu abierto');
+  uiSt.setModo('juego');
+});
+
 paso('cambio de dia (visibilitychange)', () => { for (const fn of oyentesDoc.get('visibilitychange') || []) fn({}); });
 paso('resize', () => { for (const fn of oyentesWin.get('resize') || []) fn({}); });
 

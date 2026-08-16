@@ -11,6 +11,7 @@ import { iniciarAudio, sonar, setSonido } from '../engine/sonido.js';
 import {
   conectar, jugadora, bicho, input,
   construirMundo, objetoFrente, ajustarCanvas, actualizarCamara, registrarCola,
+  bailar, BAILE,
 } from '../engine/motor.js';
 import { TECLAS_DIR, TECLAS_A, TECLAS_B, TECLAS_MENU, pilaDir, pintarDpad } from '../engine/input.js';
 import { $ } from '../dom.js';
@@ -251,13 +252,25 @@ function cerrarMenu() {
 
 
 /* --- controles ----------------------------------------------------------- */
+
+/* Dos toques seguidos de A sin nada enfrente y Kath se pone a bailar. Va acá y
+   no en el teclado porque el botón A de la pantalla entra por la misma puerta.
+   Si hay algo enfrente manda la interacción: el doble toque sería abrir dos
+   veces el mismo diálogo. */
+const DOBLE_A_MS = 400;
+let ultimaA = 0;
+
 function pulsarA() {
   iniciarAudio();
   if (getModo() === 'dialogo') { avanzarDialogo(); return; }
   if (getModo() === 'menu') return;
   if (getModo() === 'titulo') { empezar(); return; }
   const o = objetoFrente();
-  if (o) { sonar('menu'); interactuar(o); }
+  if (o) { ultimaA = 0; sonar('menu'); interactuar(o); return; }
+
+  const ahora = Date.now();
+  if (ahora - ultimaA <= DOBLE_A_MS) { ultimaA = 0; bailar(BAILE.vueltas); }
+  else ultimaA = ahora;
 }
 
 function pulsarB() {

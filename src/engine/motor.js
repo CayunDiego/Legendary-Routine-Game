@@ -1,5 +1,5 @@
 import { MAPA, SOLIDOS, OBJETOS, INICIO } from '../config/mapa.js';
-import { SPRITE_JUGADORA, VIDEO_TELE, SPRITE_DIEGO } from '../config/sprites.js';
+import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO } from '../config/sprites.js';
 import { FLAGS } from '../config/flags.js';
 import { TILE_SRC, S, TILE } from './drawing.js';
 import { TILES } from './tiles.js';
@@ -44,10 +44,70 @@ const GIRO_MS = 75;   // pausa al girar sin moverse
 
 let cv, ctx, vpW = 0, vpH = 0, dpr = 1;
 let hojaSprite = null;              // sprite sheet de la jugadora
+let hojaBaile = null;               // hoja del baile (mismo formato que la de caminar)
 let hojaDiego = null;               // sprite sheet de Diego (mismo formato)
 const FRAME_W = 24, FRAME_H = 32;   // tamaño de cada frame del sheet
 const PIES = 30;                    // y donde terminan los pies dentro del frame
 const ESC_JUG = 3;                  // escala del sprite (3 = mismo tamaño de píxel que el escenario)
+
+/* Kath baila sola cuando pasa un rato sin que nadie toque nada, y a pedido
+   cuando se toca A dos veces sin nada enfrente (eso lo decide juego.js).
+   La hoja del baile tiene la misma grilla y el mismo orden de filas que la de
+   caminar: 0 frente, 1 izquierda, 2 derecha, 3 atrás.
+
+   Cada coreografía es una lista de cuadros (fila+columna de la hoja) con una
+   duración opcional; `rapido` acorta el cuadro a la mitad para los pasos de
+   giro. Cada baile sortea una de las tres. */
+const BAILE_COREOS = [
+  // 1. solo de frente
+  [
+    { fila: 0, col: 0 }, { fila: 0, col: 1 }, { fila: 0, col: 2 }, { fila: 0, col: 3 },
+  ],
+  // 2. completo: baila de frente, gira rápido a la derecha, un cuadro de espaldas,
+  //    gira rápido a la izquierda y vuelve a bailar de frente
+  [
+    { fila: 0, col: 0 }, { fila: 0, col: 1 }, { fila: 0, col: 2 }, { fila: 0, col: 3 },
+    { fila: 2, col: 0, rapido: true },
+    { fila: 3, col: 0 },
+    { fila: 1, col: 0, rapido: true },
+  ],
+  // 3. de costados: todos los cuadros de la derecha, pasa un cuadro por el
+  //    frente, todos los cuadros de la izquierda, y otro cuadro de frente
+  //    antes de volver a arrancar por la derecha (así el ciclo cierra parejo)
+  [
+    { fila: 2, col: 0 }, { fila: 2, col: 1 }, { fila: 2, col: 2 }, { fila: 2, col: 3 },
+    { fila: 0, col: 0 },
+    { fila: 1, col: 0 }, { fila: 1, col: 1 }, { fila: 1, col: 2 }, { fila: 1, col: 3 },
+    { fila: 0, col: 0 },
+  ],
+];
+
+const BAILE = {
+  esperaMs: 15000,   // quieta este rato => arranca sola
+  cuadroMs: 180,     // cuánto dura cada cuadro
+  vueltas: 4,        // vueltas del baile pedido a mano
+};
+
+function duracionPaso(paso) {
+  return paso.rapido ? BAILE.cuadroMs / 2 : BAILE.cuadroMs;
+}
+
+function duracionCoreo(i) {
+  return BAILE_COREOS[i].reduce((total, paso) => total + duracionPaso(paso), 0);
+}
+
+/* Cuadro que corresponde a la coreografía `i` en el instante `t` (ms desde que
+   arrancó el baile), recorriendo la lista en loop. */
+function pasoBaile(i, t) {
+  const secuencia = BAILE_COREOS[i];
+  let resto = t % duracionCoreo(i);
+  for (const paso of secuencia) {
+    const dur = duracionPaso(paso);
+    if (resto < dur) return paso;
+    resto -= dur;
+  }
+  return secuencia[secuencia.length - 1];
+}
 
 const cam = { x: 0, y: 0 };
 const solido = [];                  // grilla de colisión
@@ -58,7 +118,8 @@ const jugadora = {
   px: INICIO.x * TILE, py: INICIO.y * TILE,
   dir: INICIO.dir,
   moviendo: false, t: 0, desdeX: 0, desdeY: 0,
-  paso: 0, giro: 0
+  paso: 0, giro: 0,
+  bailando: false, tBaile: 0, baileHasta: 0, quieta: 0, baileCoreo: 0
 };
 
 const bicho = { px: 0, py: 0, dir: 0, visible: false, cola: [] };
@@ -123,8 +184,45 @@ function actualizarCamara(inmediato) {
   else { cam.x += (cx - cam.x) * 0.18; cam.y += (cy - cam.y) * 0.18; }
 }
 
+/* --- baile ---------------------------------------------------------------- */
+
+/* Sin `vueltas` baila hasta que Kath haga algo; con un número, esa cantidad de
+   vueltas a la coreografía y vuelve sola a quedarse quieta. Cada baile sortea
+   entre las coreografías de BAILE_COREOS. */
+function bailar(vueltas) {
+  if (!juego.juegoActivo()) return;
+  jugadora.bailando = true;
+  jugadora.tBaile = 0;
+  jugadora.quieta = 0;
+  jugadora.baileCoreo = Math.floor(Math.random() * BAILE_COREOS.length);
+  jugadora.baileHasta = vueltas ? vueltas * duracionCoreo(jugadora.baileCoreo) : Infinity;
+}
+
+function pararBaile() {
+  jugadora.bailando = false;
+  jugadora.tBaile = 0;
+  jugadora.quieta = 0;
+}
+
+/* Corre antes que el movimiento: moverse, abrir el menú o hablar con algo corta
+   el baile y pone el reloj de la inactividad de nuevo en cero. */
+function actualizarBaile(dt) {
+  if (!juego.juegoActivo() || input.dir >= 0 || jugadora.moviendo) {
+    pararBaile();
+    return;
+  }
+  if (jugadora.bailando) {
+    jugadora.tBaile += dt;
+    if (jugadora.tBaile >= jugadora.baileHasta) pararBaile();
+    return;
+  }
+  jugadora.quieta += dt;
+  if (jugadora.quieta >= BAILE.esperaMs) bailar();
+}
+
 /* --- movimiento ---------------------------------------------------------- */
 function actualizarJugadora(dt) {
+  actualizarBaile(dt);
   if (jugadora.moviendo) {
     jugadora.t += dt;
     const p = Math.min(1, jugadora.t / MOV_MS);
@@ -331,13 +429,19 @@ function dibujarJugadora() {
     15, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  let f = 0;
-  if (jugadora.moviendo) {
+  let f = 0, fila = jugadora.dir;
+  let hoja = hojaSprite;
+  if (jugadora.bailando && hojaBaile) {
+    hoja = hojaBaile;
+    const paso = pasoBaile(jugadora.baileCoreo, jugadora.tBaile);
+    f = paso.col;
+    fila = paso.fila;
+  } else if (jugadora.moviendo) {
     const p = jugadora.t / MOV_MS;
     f = p < 0.5 ? (jugadora.paso ? 3 : 1) : (jugadora.paso ? 2 : 0);
   }
-  if (hojaSprite) {
-    ctx.drawImage(hojaSprite, f * FRAME_W, jugadora.dir * FRAME_H, FRAME_W, FRAME_H, dx, dy, w, h);
+  if (hoja) {
+    ctx.drawImage(hoja, f * FRAME_W, fila * FRAME_H, FRAME_W, FRAME_H, dx, dy, w, h);
   } else {
     ctx.fillStyle = '#f06292';
     ctx.fillRect(dx + 12, dy + 20, 26, 34);
@@ -383,9 +487,12 @@ function cargarSprite(listo) {
   // Con el interruptor apagado ni se pide el PNG de Diego.
   Promise.all([
     cargarImagen(SPRITE_JUGADORA),
+    cargarImagen(SPRITE_BAILE),
     cargarImagen(VIDEO_TELE),
     FLAGS.diego ? cargarImagen(SPRITE_DIEGO) : Promise.resolve(null),
-  ]).then(([sp, tv, dg]) => { hojaSprite = sp; hojaTele = tv; hojaDiego = dg; listo(); });
+  ]).then(([sp, bl, tv, dg]) => {
+    hojaSprite = sp; hojaBaile = bl; hojaTele = tv; hojaDiego = dg; listo();
+  });
 }
 
 let ultimo = 0;
@@ -415,5 +522,5 @@ export {
   jugadora, bicho, input,
   construirMundo, tilePasable, objetoFrente,
   ajustarCanvas, actualizarCamara, actualizarJugadora, actualizarBicho,
-  registrarCola, dibujar,
+  registrarCola, dibujar, bailar, BAILE,
 };

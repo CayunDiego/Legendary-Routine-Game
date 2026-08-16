@@ -2,7 +2,7 @@
 
 Estado: publicado, con guardado en la nube (2026-08-16).
 Verificado con `npm run test`: lint 0 errores, `smoke:worker` 12 pasos verdes,
-`smoke` 68 pasos verdes.
+`smoke` 72 pasos verdes.
 
 ---
 
@@ -136,6 +136,30 @@ volver la conexión). La ventana es de milisegundos y se cura sola.
 un `GET` extra, o mover el guardado a algo que empuje cambios en vivo
 (Durable Objects con WebSocket). Las dos cosas son bastante más máquina de la
 que este juego necesita.
+
+---
+
+## 4e. La hoja del baile es un derivado que no se puede rehacer
+
+**Severidad: baja.**
+
+`src/assets/Kath_baile_1.png` es el original que salió del generador: 1792 x 2390
+y 5,4 MB, con fondo gris y colores sucios (1529 colores distintos donde la hoja
+de caminar usa 28). Lo que usa el juego es `src/assets/kath_baile.png` (96 x 128,
+5,4 kB), que salió de reducir el original a su grilla nativa, sacarle el fondo y
+pegarle la paleta de la hoja de caminar.
+
+Dos cosas quedaron flojas:
+
+- El script que hizo esa conversión fue de una sola vez y no está en el repo. Si
+  mañana llega `Kath_baile_2.png` hay que volver a escribirlo.
+- El original de 5,4 MB vive en `src/assets/` sin que nadie lo importe. No entra
+  a la build (Rollup sólo emite lo importado, se verificó: el `dist` lleva los
+  5,38 kB de la hoja chica y nada más), pero pesa en el repo y confunde: parece
+  un asset del juego y es material de trabajo.
+
+**Arreglo:** un `scripts/hoja-sprites.mjs` que haga la conversión, y mover los
+originales a una carpeta fuera de `src/` (o dejarlos fuera del repo).
 
 ---
 
