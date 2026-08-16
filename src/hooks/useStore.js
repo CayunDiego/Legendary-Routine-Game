@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import * as logica from '../state/gameLogic.js';
 import * as ui from '../state/ui.js';
+import * as disco from '../state/persistencia.js';
+import * as sync from '../state/sync.js';
 
 /* ---------------------------------------------------------------------------
  *  Enganche entre los stores imperativos y React.
@@ -20,4 +22,14 @@ export function useLogica() {
 /* Se redibuja cuando cambia la interfaz (modo, pestaña, efectos). */
 export function useUI() {
   return useSyncExternalStore(ui.suscribir, ui.version, ui.version);
+}
+
+/* Se redibuja cuando cambia la salud del guardado local o el código de partida. */
+export function useDisco() {
+  return useSyncExternalStore(disco.suscribir, disco.version, disco.version);
+}
+
+/* Se redibuja cuando cambia el estado de la sincronización con la nube. */
+export function useSync() {
+  return useSyncExternalStore(sync.suscribir, sync.version, sync.version);
 }

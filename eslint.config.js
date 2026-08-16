@@ -24,4 +24,18 @@ export default [
       'no-empty': ['warn', { allowEmptyCatch: true }],
     },
   },
+  /* El Worker corre en el runtime de Cloudflare, no en el navegador, pero las
+     globales que usa (fetch, Request, Response, URL) son las mismas. */
+  {
+    files: ['worker/**/*.{js,mjs}'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      globals: { ...globals.browser, ...globals.node },
+    },
+    rules: {
+      'no-unused-vars': ['warn', { args: 'none', varsIgnorePattern: '^_' }],
+      'no-empty': ['warn', { allowEmptyCatch: true }],
+    },
+  },
 ];
