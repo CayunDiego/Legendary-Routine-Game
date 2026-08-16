@@ -8,8 +8,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint src",
-    "smoke": "node smoke.mjs"
+    "lint": "eslint src worker",
+    "smoke": "node smoke.mjs",
+    "smoke:worker": "node worker/test.mjs",
+    "test": "npm run lint && npm run smoke:worker && npm run smoke"
   },
   "dependencies": {
     "react": "^19.2.0",

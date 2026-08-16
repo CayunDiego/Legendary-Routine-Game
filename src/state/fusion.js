@@ -1,0 +1,175 @@
+import { MISIONES } from '../config/misiones.js';
+import { PREMIOS } from '../config/premios.js';
+import { xpTotal, desdeXpTotal } from './niveles.js';
+
+/* ---------------------------------------------------------------------------
+ *  Fusión de dos partidas.
+ *
+ *  Con dos dispositivos, tarde o temprano los dos escriben sin haberse visto:
+ *  Kath completa misiones en el teléfono sin señal y a la tarde abre la tablet,
+ *  que tenía el estado de ayer. Lo obvio sería "gana el que guardó último", y
+ *  es exactamente lo que no queremos: la tablet borraría el día del teléfono.
+ *
+ *  Así que se fusiona de verdad. La mayoría de los datos lo permite sin
+ *  ambigüedad porque sólo crecen (XP, misiones totales, días completos) o están
+ *  indexados por fecha (el historial, las misiones de hoy). Para lo poco que es
+ *  una preferencia y no un logro — el sonido, el nombre del bicho — decide el
+ *  que escribió último, que es lo que quiere decir `seq`.
+ *
+ *  Regla de oro: ante la duda, se redondea a favor de Kath. Nunca se le saca
+ *  algo que hizo.
+ * ------------------------------------------------------------------------- */
+
+const maxNum = (x, y) => Math.max(Number(x) || 0, Number(y) || 0);
+
+function contarHechas(hoy) {
+  const h = hoy || {};
+  let n = 0;
+  for (const m of MISIONES) if ((h[m.id] || 0) >= m.veces) n++;
+  return n;
+}
+
+function costoPremio(id) {
+  const p = PREMIOS.find((x) => x.id === id);
+  return p ? p.costo : 0;
+}
+
+/* --- misiones del día ----------------------------------------------------- */
+function fusionarHoy(a, b) {
+  const out = {};
+  for (const k of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+    out[k] = maxNum(a && a[k], b && b[k]);
+  }
+  return out;
+}
+
+/* --- historial ------------------------------------------------------------ */
+/* Indexado por fecha, así que la unión es directa. Si los dos tienen el mismo
+   día con distinto número, gana el mayor: uno de los dos no llegó a enterarse
+   de la última misión. */
+function fusionarHistorial(a, b, extra) {
+  const porFecha = new Map();
+  const meter = (h) => {
+    if (!h || !h.d) return;
+    const prev = porFecha.get(h.d);
+    if (!prev) { porFecha.set(h.d, { ...h }); return; }
+    prev.hechas = maxNum(prev.hechas, h.hechas);
+    if (!prev.animo && h.animo) prev.animo = h.animo;
+  };
+  for (const h of a || []) meter(h);
+  for (const h of b || []) meter(h);
+  for (const h of extra || []) meter(h);
+
+  const out = [...porFecha.values()].sort((x, y) => (x.d < y.d ? -1 : x.d > y.d ? 1 : 0));
+  return out.slice(-90);   // el mismo tope que usa chequearDia()
+}
+
+/* --- premios canjeados ---------------------------------------------------- */
+/* Los canjes nuevos traen `cid` y se unen por ahí. Los viejos no tienen nada
+   que los distinga, así que se agrupan por premio+fecha y se toma la cantidad
+   mayor de los dos lados: canjear dos abrazos el mismo día es legítimo y no se
+   puede confundir con un duplicado de sincronización. */
+function fusionarCanjeados(a, b) {
+  const conCid = new Map();
+  const sinCid = new Map();
+
+  const clasificar = (lista, bolsaSinCid) => {
+    for (const c of lista || []) {
+      if (!c || !c.id) continue;
+      if (c.cid) { conCid.set(c.cid, c); continue; }
+      const k = c.id + '|' + (c.fecha || '');
+      if (!bolsaSinCid.has(k)) bolsaSinCid.set(k, []);
+      bolsaSinCid.get(k).push(c);
+    }
+  };
+
+  const bolsaA = new Map(), bolsaB = new Map();
+  clasificar(a, bolsaA);
+  clasificar(b, bolsaB);
+
+  for (const k of new Set([...bolsaA.keys(), ...bolsaB.keys()])) {
+    const la = bolsaA.get(k) || [], lb = bolsaB.get(k) || [];
+    const ganadora = la.length >= lb.length ? la : lb;
+    sinCid.set(k, ganadora);
+  }
+
+  const out = [...conCid.values()];
+  for (const lista of sinCid.values()) out.push(...lista);
+  // Más nuevos primero, que es como los muestra TabPremios.
+  return out.sort((x, y) => String(y.fecha || '').localeCompare(String(x.fecha || '')));
+}
+
+/* --- fusión ---------------------------------------------------------------- */
+function fusionar(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+
+  const seqA = Number(a.seq) || 0;
+  const seqB = Number(b.seq) || 0;
+  const ultimo = seqB >= seqA ? b : a;      // el que escribió más tarde
+  const viejo = ultimo === b ? a : b;
+
+  // Base: todo lo que no tiene regla propia lo decide el último en escribir.
+  // Arrancar del viejo y pisar con el último también conserva los campos que
+  // este código todavía no conoce (una versión más nueva del juego en el otro
+  // dispositivo), en vez de tirarlos.
+  const out = { ...viejo, ...ultimo };
+
+  // --- progreso: sólo sube -------------------------------------------------
+  const nivelado = desdeXpTotal(maxNum(xpTotal(a.nivel || 1, a.xp), xpTotal(b.nivel || 1, b.xp)));
+  out.nivel = nivelado.nivel;
+  out.xp = nivelado.xp;
+  out.totalMisiones = maxNum(a.totalMisiones, b.totalMisiones);
+  out.diasCompletos = maxNum(a.diasCompletos, b.diasCompletos);
+  out.mejorRacha = maxNum(a.mejorRacha, b.mejorRacha);
+  out.racha = maxNum(a.racha, b.racha);
+  out.eclosionado = !!(a.eclosionado || b.eclosionado);
+  out.primeraVez = !!(a.primeraVez && b.primeraVez);
+
+  // --- el día ---------------------------------------------------------------
+  const diaA = a.dia || '', diaB = b.dia || '';
+  const arrastrados = [];
+  if (diaA === diaB) {
+    out.dia = diaA || null;
+    out.hoy = fusionarHoy(a.hoy, b.hoy);
+    out.animoHoy = ultimo.animoHoy || viejo.animoHoy || null;
+    out.cartaVista = !!(a.cartaVista || b.cartaVista);
+  } else {
+    // Días distintos: manda el más nuevo. El día del otro no se tira, se cierra
+    // y se manda al historial — es progreso real que nadie llegó a archivar.
+    const nuevoDia = diaA > diaB ? a : b;
+    const otro = nuevoDia === a ? b : a;
+    out.dia = nuevoDia.dia || null;
+    out.hoy = { ...(nuevoDia.hoy || {}) };
+    out.animoHoy = nuevoDia.animoHoy || null;
+    out.cartaVista = !!nuevoDia.cartaVista;
+    out.cartaIdx = typeof nuevoDia.cartaIdx === 'number' ? nuevoDia.cartaIdx : -1;
+    if (otro.dia) {
+      arrastrados.push({ d: otro.dia, animo: otro.animoHoy || null, hechas: contarHechas(otro.hoy) });
+    }
+  }
+
+  out.historial = fusionarHistorial(a.historial, b.historial, arrastrados);
+
+  // --- oro: no se puede tomar el máximo -------------------------------------
+  // El oro baja al canjear, así que el número en sí no dice quién está más
+  // adelantado. Se reconstruye: lo ganado (que sólo sube) menos lo gastado
+  // según la lista de canjes ya fusionada.
+  out.canjeados = fusionarCanjeados(a.canjeados, b.canjeados);
+  const ganado = maxNum(a.oroGanado, b.oroGanado);
+  const gastado = out.canjeados.reduce((s, c) => s + costoPremio(c.id), 0);
+  out.oroGanado = ganado;
+  out.oro = Math.max(0, ganado - gastado);
+
+  // --- compañero -------------------------------------------------------------
+  out.bichoNombre = ultimo.bichoNombre || viejo.bichoNombre || null;
+
+  // --- metadatos --------------------------------------------------------------
+  out.v = maxNum(a.v, b.v);
+  out.seq = Math.max(seqA, seqB) + 1;
+  out.guardadoEn = maxNum(a.guardadoEn, b.guardadoEn) || Date.now();
+
+  return out;
+}
+
+export { fusionar, fusionarHoy, fusionarHistorial, fusionarCanjeados, contarHechas };

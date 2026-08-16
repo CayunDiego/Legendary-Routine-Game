@@ -1,0 +1,25 @@
+# Cabeceras de caché para Cloudflare Pages. Vite copia public/ a dist/ tal cual,
+# así que este archivo llega solo al deploy.
+#
+# Lo importante es el service worker. Si el navegador se queda con un sw.js
+# viejo, se queda con el juego viejo para siempre y no hay forma de empujarle
+# una actualización: es el mismo bug que ya se arregló una vez (ver
+# docs/deuda-tecnica.md). Nunca se cachea.
+
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# El index decide qué assets se cargan, así que tiene que revalidarse siempre.
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+# Los assets llevan hash de contenido en el nombre: son inmutables por
+# definición, un nombre distinto ya es un archivo distinto.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

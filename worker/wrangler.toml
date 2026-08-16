@@ -1,0 +1,20 @@
+name = "rutina-legendaria"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# Orígenes que pueden hablar con el Worker. Vacío o ausente = cualquiera.
+# El primero es el juego publicado; el segundo es `npm run dev`, para poder
+# probar la sincronización antes de publicar.
+#
+# Los deploys de vista previa de Pages quedan afuera a propósito: cada uno tiene
+# un dominio distinto (<hash>.rutina-legendaria.pages.dev) y no se pueden listar
+# de antemano. La que usa Kath es la de producción.
+[vars]
+ORIGENES = "https://rutina-legendaria.pages.dev,http://localhost:5173"
+
+# El id sale de:  npx wrangler d1 create rutina-legendaria
+# El binding se llama DB a propósito: es como el Worker la busca (env.DB).
+[[d1_databases]]
+binding = "DB"
+database_name = "rutina-legendaria"
+database_id = "5ce66987-612b-48b5-acc0-f8225c8ab186"

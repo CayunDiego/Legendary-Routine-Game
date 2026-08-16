@@ -4,6 +4,8 @@ import { PREMIOS } from '../config/premios.js';
 import { CARTAS } from '../config/cartas.js';
 import { COMPANERO } from '../config/companero.js';
 import { crearStore } from './store.js';
+import { xpNecesaria } from './niveles.js';
+import * as disco from './persistencia.js';
 
 /* Store al que se enganchan los componentes de React. Se avisa desde guardar(),
    que es por donde pasa toda mutación de EST (ver comentario más abajo). */
@@ -15,14 +17,19 @@ const version = store.version;
  *  LÓGICA DEL JUEGO — progreso, guardado, misiones, racha, compañero
  * ==========================================================================*/
 
-const CLAVE_GUARDADO = 'rutina_legendaria_v1';
+const CLAVE_GUARDADO = disco.CLAVE;
+
+/* Versión del formato de la partida. Si sube, hace falta una migración en
+   MIGRACIONES que lleve de la anterior a esta. */
+const V_ACTUAL = 2;
 
 const EST_INICIAL = () => ({
-  v: 1,
+  v: V_ACTUAL,
   dia: null,
   nivel: 1,
   xp: 0,
   oro: 0,
+  oroGanado: 0,           // todo el oro ganado en la vida; la fusión lo necesita
   racha: 0,
   mejorRacha: 0,
   diasCompletos: 0,
@@ -34,12 +41,48 @@ const EST_INICIAL = () => ({
   cartaIdx: -1,
   eclosionado: false,
   bichoNombre: null,
-  canjeados: [],          // [{id, fecha}]
+  canjeados: [],          // [{cid, id, fecha}]
   sonido: true,
-  primeraVez: true
+  primeraVez: true,
+  seq: 0,                 // sube en cada guardado; decide quién escribió último
+  guardadoEn: 0,          // Date.now() del último guardado
+  escritoPor: null,       // qué dispositivo lo guardó
 });
 
 let EST = EST_INICIAL();
+
+/* --- migraciones ---------------------------------------------------------- */
+/* Cada entrada lleva del número que la nombra al siguiente. Se aplican en
+   cadena, así que una partida vieja de varias versiones se pone al día sola. */
+const MIGRACIONES = {
+  /* v1 -> v2: llegaron la sincronización y la fusión.
+     `oroGanado` no estaba guardado en ningún lado, pero se puede reconstruir:
+     lo que tiene ahora más lo que gastó en premios. */
+  1: (e) => {
+    const gastado = (e.canjeados || []).reduce((s, c) => {
+      const p = PREMIOS.find((x) => x.id === c.id);
+      return s + (p ? p.costo : 0);
+    }, 0);
+    e.oroGanado = (Number(e.oro) || 0) + gastado;
+    e.canjeados = (e.canjeados || []).map((c) => ({ ...c, cid: c.cid || disco.uuid() }));
+    e.seq = 1;
+    e.guardadoEn = Date.now();
+    e.escritoPor = null;
+    e.v = 2;
+    return e;
+  },
+};
+
+function migrar(partida) {
+  let e = partida;
+  let vueltas = 0;
+  while ((Number(e.v) || 1) < V_ACTUAL && vueltas++ < 20) {
+    const paso = MIGRACIONES[Number(e.v) || 1];
+    if (!paso) break;
+    e = paso(e);
+  }
+  return e;
+}
 /* --- fecha lógica del juego (el día arranca a las 4 AM) ------------------ */
 function diaDeJuego(f) {
   const d = new Date(f || Date.now());
@@ -58,24 +101,85 @@ function diasEntre(isoA, isoB) {
 }
 
 /* --- guardado ------------------------------------------------------------ */
+/* Quién quiere enterarse de que se guardó. Lo usa sync.js para empujar a la
+   nube. Es un registro de funciones y no un import directo a propósito: si
+   gameLogic importara sync y sync importara gameLogic tendríamos un ciclo. */
+const oyentesGuardado = new Set();
+const oyentesReemplazo = new Set();
+
+function alGuardar(fn) { oyentesGuardado.add(fn); return () => oyentesGuardado.delete(fn); }
+function alReemplazar(fn) { oyentesReemplazo.add(fn); return () => oyentesReemplazo.delete(fn); }
+
+/* Huella de lo último que quedó escrito en disco. Sirve para no repetir
+   trabajo: ver el comentario de guardar(). */
+let huellaEnDisco = null;
+
 /* Toda mutación de EST termina llamando a guardar(), así que este es el único
    lugar donde hace falta avisarle a React. Si algún día se muta EST sin guardar,
-   la interfaz no se va a enterar: el aviso va acá a propósito. */
+   la interfaz no se va a enterar: el aviso va acá a propósito.
+
+   Pero muchas de esas llamadas no traen ningún cambio: cerrar un diálogo o
+   cerrar el menú llaman a guardar() aunque Kath sólo haya mirado la tele. Antes
+   cada una de esas escribía a disco, subía `seq`, redibujaba y despertaba a la
+   nube. Ahora se comparan las huellas primero y, si no cambió nada que valga la
+   pena guardar, no pasa nada de eso.
+
+   Devuelve si la partida está a salvo en disco. Ajustes lo mira para poder decir
+   "no se está guardando" en vez de dejar que Kath juegue una tarde entera al
+   vacío — por eso saltear también devuelve true: no se escribió porque no hacía
+   falta, no porque haya fallado. */
 function guardar() {
-  try { localStorage.setItem(CLAVE_GUARDADO, JSON.stringify(EST)); } catch (e) { }
+  const huellaAhora = disco.huella(EST);
+  if (huellaAhora === huellaEnDisco) return true;
+
+  EST.seq = (Number(EST.seq) || 0) + 1;
+  EST.guardadoEn = Date.now();
+  EST.escritoPor = disco.idDispositivo();
+
+  const ok = disco.escribir(EST);
+  // La huella se actualiza sólo si la escritura entró. Si falló por cuota o
+  // por el modo privado, el próximo guardado tiene que volver a intentarlo en
+  // vez de creer que ya está guardado.
+  if (ok) huellaEnDisco = huellaAhora;
+
   store.avisar();
+  for (const fn of oyentesGuardado) {
+    try { fn(EST); } catch { /* un oyente roto no puede tumbar el guardado */ }
+  }
+  return ok;
 }
 
 function cargar() {
-  try {
-    const raw = localStorage.getItem(CLAVE_GUARDADO);
-    if (raw) EST = Object.assign(EST_INICIAL(), JSON.parse(raw));
-  } catch (e) { EST = EST_INICIAL(); }
+  const { partida, origen } = disco.leer();
+  if (partida) EST = Object.assign(EST_INICIAL(), migrar(partida));
+  else EST = EST_INICIAL();
+  // A propósito en null y no en la huella de lo leído: si la partida venía de
+  // una versión vieja, migrar() la cambió y lo que hay en disco ya no es lo que
+  // tenemos en memoria. Un guardado de más al arrancar no le duele a nadie.
+  huellaEnDisco = null;
   // Avisar acá es imprescindible: los componentes se dibujan por primera vez
   // antes de que corra iniciar(), así que sin este aviso el HUD se quedaría
   // mostrando la partida vacía cuando el día ya estaba empezado.
   store.avisar();
+  return origen;
 }
+
+/* Cambia la partida entera de una. La usan la restauración de una copia y la
+   fusión con la nube. Avisa aparte porque hay cosas fuera de EST que dependen
+   de esto — el bicho visible en el motor, por ejemplo — y el motor no puede
+   importar este módulo sin invertir las capas. */
+function reemplazarEstado(nuevo, opciones) {
+  EST = Object.assign(EST_INICIAL(), migrar(nuevo));
+  const { guardarTambien = true } = opciones || {};
+  for (const fn of oyentesReemplazo) {
+    try { fn(EST); } catch { /* idem */ }
+  }
+  if (guardarTambien) guardar();
+  else store.avisar();
+  return EST;
+}
+
+function obtenerEstado() { return EST; }
 
 /* --- cambio de día ------------------------------------------------------- */
 function chequearDia() {
@@ -130,6 +234,9 @@ function completarMision(id) {
   const completa = EST.hoy[id] >= m.veces;
   const subio = darXP(m.xp);
   EST.oro += m.oro;
+  // oroGanado nunca baja. Es lo que deja fusionar dos dispositivos sin
+  // inventar monedas ni comerse un canje (ver fusion.js).
+  EST.oroGanado = (Number(EST.oroGanado) || 0) + m.oro;
   guardar();
   return {
     xp: m.xp, oro: m.oro, completa, subio,
@@ -139,8 +246,8 @@ function completarMision(id) {
 }
 
 /* --- nivel --------------------------------------------------------------- */
-function xpNecesaria(nivel) { return 80 + (nivel - 1) * 55; }
-
+/* xpNecesaria() vive en niveles.js: fusion.js también la necesita y desde acá
+   sería un ciclo de imports. Se re-exporta para no tocar a quien ya la usaba. */
 function darXP(n) {
   EST.xp += n;
   let subio = 0;
@@ -175,7 +282,10 @@ function canjear(id) {
   const p = PREMIOS.find(x => x.id === id);
   if (!p || EST.oro < p.costo) return false;
   EST.oro -= p.costo;
-  EST.canjeados.unshift({ id, fecha: diaDeJuego() });
+  // El cid identifica este canje en particular. Sin él, dos dispositivos que
+  // canjean el mismo premio el mismo día se fusionan en uno solo y Kath
+  // pierde un cupón.
+  EST.canjeados.unshift({ cid: disco.uuid(), id, fecha: diaDeJuego() });
   guardar();
   return true;
 }
@@ -201,13 +311,15 @@ function ultimosDias() {
 }
 
 export {
-  EST, EST_INICIAL, CLAVE_GUARDADO,
+  EST, EST_INICIAL, CLAVE_GUARDADO, V_ACTUAL, migrar,
   suscribir, version,
   diaDeJuego, fechaBonita, diasEntre,
   guardar, cargar, chequearDia,
+  alGuardar, alReemplazar, reemplazarEstado, obtenerEstado,
   misionPorId, hechoHoy, contarHechasHoy, progresoDelDia, completarMision,
-  xpNecesaria, darXP,
+  darXP,
   etapaBicho, puedeEclosionar, nombreBicho,
   canjear,
   DIAS_TIRA, ultimosDias,
 };
+export { xpNecesaria } from './niveles.js';

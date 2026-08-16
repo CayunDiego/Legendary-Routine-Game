@@ -26,13 +26,24 @@ body{
 
 #app{
   position:relative;
-  width:100%;max-width:520px;
+  width:100%;
   height:100dvh;max-height:100dvh;
   display:flex;flex-direction:column;
   background:var(--noche);
   overflow:hidden;
+  /* El index pide viewport-fit=cover, así que en un celular con muesca el
+     contenido llegaría abajo del hueco. En vertical estos valores son 0 y no
+     cambian nada; en horizontal corren el juego lo justo. */
+  padding-left:env(safe-area-inset-left);
+  padding-right:env(safe-area-inset-right);
 }
 @supports not (height:100dvh){ #app{height:100vh} }
+
+/* El tope de 520px arranca recién pasado el ancho de cualquier teléfono en
+   vertical. Abajo de eso el juego ocupa la pantalla entera y no queda borde
+   negro a los costados; de 560px para arriba (tablet, escritorio) se sigue
+   viendo del mismo tamaño que antes. */
+@media (min-width:560px){ #app{max-width:520px} }
 
 /* ---------- HUD ---------- */
 #hud{
@@ -292,6 +303,19 @@ body{
 .btnPeligro{
   width:100%;font:inherit;font-weight:800;margin-top:10px;
   background:#fff;color:#c23b3b;border:2px solid #e8b4b4;border-radius:11px;padding:11px;
+}
+.btnPrim:disabled{opacity:.5;box-shadow:0 3px 0 #6b6b7a}
+/* Los problemas de guardado se avisan en rojo: si el juego dejó de guardar,
+   eso no puede parecerse a una nota al pie. */
+.aviso{
+  font-size:12.5px;line-height:1.5;margin-top:8px;padding:9px 11px;
+  color:#8a2f2f;background:#fff2f2;border:2px solid #e8b4b4;border-radius:10px;
+}
+.codigoPartida{
+  font-size:15px;font-weight:900;letter-spacing:.5px;word-break:break-all;
+  margin:8px 0;padding:10px;text-align:center;
+  color:var(--rosa-osc);background:var(--crema);
+  border:2px dashed var(--crema2);border-radius:10px;
 }
 /* ---------- panel de progreso ---------- */
 .heroNum{

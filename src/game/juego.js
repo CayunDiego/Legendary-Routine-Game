@@ -16,10 +16,12 @@ import { TECLAS_DIR, TECLAS_A, TECLAS_B, TECLAS_MENU, pilaDir, pintarDpad } from
 import { $ } from '../dom.js';
 
 import {
-  EST, guardar, cargar, chequearDia,
+  EST, guardar, cargar, chequearDia, alReemplazar,
   misionPorId, hechoHoy, contarHechasHoy, progresoDelDia, completarMision,
   etapaBicho, puedeEclosionar, nombreBicho,
 } from '../state/gameLogic.js';
+import { pedirPermanencia } from '../state/persistencia.js';
+import * as sync from '../state/sync.js';
 import {
   getModo, setModo, juegoActivo, setPestana, mostrarRecompensa, dispararFlash,
 } from '../state/ui.js';
@@ -396,6 +398,23 @@ function iniciar() {
     bicho.visible = true;
     bicho.px = jugadora.px; bicho.py = jugadora.py;
   }
+
+  /* Cuando la partida se cambia entera de golpe — al restaurar una copia o al
+     fusionar con la nube — hay cosas que no viven en EST y quedarían viejas.
+     El compañero es la que se nota: eclosionó en la tablet y acá el bicho
+     seguiría invisible hasta recargar. */
+  alReemplazar((est) => {
+    setSonido(est.sonido);
+    if (est.eclosionado && !bicho.visible) {
+      bicho.visible = true;
+      bicho.px = jugadora.px; bicho.py = jugadora.py;
+    }
+  });
+
+  // Le pide al navegador que no borre solo el guardado si le falta espacio.
+  // Si dice que no, el juego sigue igual: es una mejora, no un requisito.
+  pedirPermanencia();
+  sync.arrancar();
 
   ajustarCanvas();
   actualizarCamara(true);
