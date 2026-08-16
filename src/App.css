@@ -94,6 +94,22 @@ body{
 #flash.activo{animation:destello .5s ease-out}
 @keyframes destello{0%{opacity:.85}100%{opacity:0}}
 
+/* Cartelito de aviso: aparece solo arriba a la derecha y se va solo (lo saca
+   ui.js con un timeout). No pide ningún toque. */
+.banner{
+  position:absolute;top:10px;right:10px;max-width:72%;
+  background:var(--noche2);color:#fff;font-weight:800;font-size:12.5px;
+  border:2px solid #000;border-radius:11px;padding:9px 13px;
+  box-shadow:0 3px 0 #000;
+  animation:bannerVaVen 4s ease-in-out forwards;
+}
+@keyframes bannerVaVen{
+  0%{opacity:0;transform:translate(14px,-8px)}
+  8%{opacity:1;transform:translate(0,0)}
+  88%{opacity:1;transform:translate(0,0)}
+  100%{opacity:0;transform:translate(14px,-8px)}
+}
+
 /* ---------- diálogo ---------- */
 #dialogo{
   position:absolute;left:8px;right:8px;bottom:8px;

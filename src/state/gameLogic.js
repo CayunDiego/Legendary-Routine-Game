@@ -44,6 +44,10 @@ const EST_INICIAL = () => ({
   canjeados: [],          // [{cid, id, fecha}]
   sonido: true,
   primeraVez: true,
+  // Última versión del juego que Kath ya vio. Vacía en una partida que ya
+  // existía antes de este campo: eso es justo lo que dispara el cartelito de
+  // "hay algo nuevo" la primera vez que abre el juego actualizado.
+  versionVista: null,
   seq: 0,                 // sube en cada guardado; decide quién escribió último
   guardadoEn: 0,          // Date.now() del último guardado
   escritoPor: null,       // qué dispositivo lo guardó

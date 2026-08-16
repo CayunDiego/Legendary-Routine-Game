@@ -24,7 +24,7 @@ import {
 import { pedirPermanencia } from '../state/persistencia.js';
 import * as sync from '../state/sync.js';
 import {
-  getModo, setModo, juegoActivo, setPestana, mostrarRecompensa, dispararFlash,
+  getModo, setModo, juegoActivo, setPestana, mostrarRecompensa, dispararFlash, mostrarBanner,
 } from '../state/ui.js';
 import {
   dialogo, avanzarDialogo, cerrarDialogo, moverOpcion, elegirOpcion, hayOpciones,
@@ -355,6 +355,9 @@ function empezar() {
   setModo('juego');
   if (EST.primeraVez) {
     EST.primeraVez = false;
+    // Ya está viendo el juego tal cual es hoy: no hace falta avisarle además
+    // que "hay algo nuevo".
+    EST.versionVista = CONFIG.version;
     guardar();
     dialogo([
       { t: `Hola, ${CONFIG.jugadora}.`, fanfarria: true },
@@ -366,6 +369,12 @@ function empezar() {
       { t: `Te quiero mucho.\n— ${CONFIG.autor}`, carta: true }
     ]);
   } else {
+    if (EST.versionVista !== CONFIG.version) {
+      EST.versionVista = CONFIG.version;
+      guardar();
+      mostrarBanner('✨ Hay algo nuevo en el juego');
+    }
+
     const p = progresoDelDia();
     if (p.hechas === 0) {
       const saludo = new Date().getHours() < 12 ? 'Buen día' : (new Date().getHours() < 20 ? 'Buenas tardes' : 'Buenas noches');

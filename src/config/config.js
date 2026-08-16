@@ -12,7 +12,7 @@ const CONFIG = {
   misionesParaRacha: 5,
   // La "hora de reinicio": a las 4 AM arranca el día nuevo (así trasnochar no rompe la racha)
   horaReinicio: 4,
-  version: '1.1.0',
+  version: '1.2.0',
 
   /* Dirección del Worker que guarda las partidas en la nube. Vaciar esto hace
      que el juego ande 100% local, sin sincronizar y sin errores: es un extra,

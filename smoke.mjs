@@ -150,6 +150,7 @@ const mod = await vite.ssrLoadModule('/src/game/juego.js');
 const motor = await vite.ssrLoadModule('/src/engine/motor.js');
 const dlg = await vite.ssrLoadModule('/src/state/dialogo.js');
 const uiSt = await vite.ssrLoadModule('/src/state/ui.js');
+const logica = await vite.ssrLoadModule('/src/state/gameLogic.js');
 console.log('modulo importado, exports:', Object.keys(mod), '\n');
 
 /* config.js trae la URL del Worker de verdad, que es lo que necesita el juego
@@ -190,6 +191,36 @@ paso('mover opcion con flechas', () => dlg.moverOpcion(1));
 paso('avanzar dialogo', () => dlg.avanzarDialogo());
 paso('dialogo con premio y fanfarria', () => mod.dialogo([{ t: 'x', premio: '+1 XP', fanfarria: true }, { t: 'y', carta: true }]));
 paso('cerrar dialogo', () => dlg.cerrarDialogo());
+
+/* Novedades: el cartelito de "hay algo nuevo" arriba a la derecha. No pide
+   ningún toque (a diferencia de dialogo()), así que lo que hay que probar es
+   que EST.versionVista se ponga al día y que una partida nueva, que ya lo vio
+   todo en la bienvenida, no lo vea aparte. */
+const igualNov = (a, b, q) => { if (a !== b) throw new Error(`${q}: esperaba ${b}, hubo ${a}`); };
+
+paso('novedades: la bienvenida de una partida nueva ya la deja vista', () => {
+  igualNov(logica.EST.versionVista, cfg.version, 'versionVista tras la bienvenida');
+  igualNov(uiSt.getBanner(), null, 'no aparece el cartelito en la bienvenida');
+});
+
+paso('novedades: una partida existente que no la vio, la ve una vez al volver', () => {
+  logica.EST.versionVista = null;   // como si fuera de antes de que existiera el campo
+  mod.empezar();
+  igualNov(logica.EST.versionVista, cfg.version, 'se marca vista');
+  if (!uiSt.getBanner()) throw new Error('no aparecio el cartelito');
+  dlg.cerrarDialogo();   // puede haber quedado tambien el saludo del dia
+});
+
+paso('novedades: una vez vista no la vuelve a mostrar', () => {
+  // El cartelito de la prueba anterior puede seguir vivo (se borra solo a los
+  // 4s), así que lo que hay que ver es que no aparezca uno NUEVO: mismo objeto
+  // antes y después, no null.
+  const antes = uiSt.getBanner();
+  uiSt.setModo('titulo');
+  mod.empezar();
+  if (uiSt.getBanner() !== antes) throw new Error('aparecio un cartelito nuevo con la version ya vista');
+  dlg.cerrarDialogo();
+});
 
 /* El baile: sale de una hoja de sprites distinta y de un reloj de inactividad,
    así que es fácil dejarlo prendido para siempre o que no arranque nunca. */
@@ -238,7 +269,6 @@ paso('resize', () => { for (const fn of oyentesWin.get('resize') || []) fn({}); 
  * ------------------------------------------------------------------------- */
 const disco = await vite.ssrLoadModule('/src/state/persistencia.js');
 const fusion = await vite.ssrLoadModule('/src/state/fusion.js');
-const logica = await vite.ssrLoadModule('/src/state/gameLogic.js');
 const CLAVE = disco.CLAVE, CLAVE_BAK = disco.CLAVE_BAK;
 
 const igual = (a, b, q) => { if (a !== b) throw new Error(`${q}: esperaba ${b}, hubo ${a}`); };

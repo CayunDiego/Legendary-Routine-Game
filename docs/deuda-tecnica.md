@@ -2,7 +2,7 @@
 
 Estado: publicado, con guardado en la nube (2026-08-16).
 Verificado con `npm run test`: lint 0 errores, `smoke:worker` 12 pasos verdes,
-`smoke` 72 pasos verdes.
+`smoke` 74 pasos verdes.
 
 ---
 
