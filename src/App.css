@@ -23,19 +23,21 @@ body{
   display:flex;justify-content:center;align-items:stretch;
   user-select:none;-webkit-user-select:none;touch-action:manipulation;
 }
+/* React monta todo adentro de este div, que legacy no tenía (ahí #app colgaba
+   directo de <body>). Sin ancho explícito queda a merced de su contenido: el
+   <canvas> arranca con su tamaño por defecto (300px) antes de que el motor lo
+   ajuste, eso achica #root, y ajustarCanvas() termina midiendo su propio
+   contenedor ya achicado — quedando pegado en ese ancho chico para siempre. */
+#root{width:100%;height:100%}
 
 #app{
   position:relative;
   width:100%;
+  margin:0 auto;
   height:100dvh;max-height:100dvh;
   display:flex;flex-direction:column;
   background:var(--noche);
   overflow:hidden;
-  /* El index pide viewport-fit=cover, así que en un celular con muesca el
-     contenido llegaría abajo del hueco. En vertical estos valores son 0 y no
-     cambian nada; en horizontal corren el juego lo justo. */
-  padding-left:env(safe-area-inset-left);
-  padding-right:env(safe-area-inset-right);
 }
 @supports not (height:100dvh){ #app{height:100vh} }
 
