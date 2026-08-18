@@ -19,13 +19,6 @@ pasa a ser una tarea normal, no necesita estar acá.
 
 ## Pendientes
 
-- **2026-08-16 — Disfraces coleccionables.** Kath se puede poner disfraces
-  distintos. Se encuentran caminando por el césped (aparición al azar o por
-  misión) y se van guardando en un placard del cuarto, como colección.
-  Necesita: sprites por disfraz (mismo formato que la hoja de caminar, para
-  poder intercambiarla como con el baile), lugar en el estado (`EST`) para la
-  colección y el disfraz puesto, y la pantalla del placard para elegir.
-
 - **2026-08-16 — Carpita mágica en el patio.** Mini carpa/casita de juguete
   con puerta negra. Kath choca con la puerta y la teletransporta a un mundo
   maravilloso (mapa/escena nueva).
@@ -33,6 +26,134 @@ pasa a ser una tarea normal, no necesita estar acá.
 ---
 
 ## Hechas
+
+- **2026-08-17 — Disfraces coleccionables.** Tres accesorios (orejas de Skre,
+  antenitas de abeja, capa de superheroína) que aparecen solos caminando por
+  el césped y se guardan en el placard del cuarto, con su pestaña en el menú.
+  `config/disfraces.js` es el catálogo, `engine/disfraces.js` el arte.
+
+  La nota original pedía "sprites por disfraz, mismo formato que la hoja de
+  caminar". **No se hizo así**, y conviene saber por qué: eso son 16 cuadros
+  nuevos por disfraz, dibujados encima de Kath y calzando al píxel. En vez de
+  eso son accesorios que se dibujan *sobre* la hoja que ya existe. Lo que lo
+  hace viable es un dato que se midió: la cabeza está exactamente en el mismo
+  lugar en los 16 cuadros de la hoja de caminar **y** en los 16 de la de
+  bailar. Por eso alcanza con un dibujo por dirección — cuatro por accesorio,
+  no dieciséis — y funcionan igual bailando sin tocar nada.
+
+  Dos cosas que costaron y no son evidentes:
+
+  - **Los accesorios de la cabeza van DETRÁS del sprite, no delante.** El
+    primer intento los apoyaba "sobre" la cabeza y quedaban flotando con un
+    hueco. El pelo de Kath es un afro redondeado: arranca en y=2 en la
+    coronilla pero recién en y=5 o 6 en los costados, que es justo donde caen
+    las orejas. La solución no es moverlas sino alargarlas hasta y=11
+    (`RAIZ`) y dibujarlas detrás: el pelo les tapa la base y se leen como que
+    salen de atrás.
+  - El lienzo del accesorio es 8 filas más alto que el cuadro (`ALTO_EXTRA`)
+    porque una oreja no entra en los 2 px que hay sobre la cabeza. El arte se
+    autorea en coordenadas del cuadro —con `y` negativo para lo que sobresale—
+    y el módulo se encarga del corrimiento, para no tener que pensarlo en cada
+    rectángulo.
+
+  El hallazgo se sortea al terminar un paso sobre césped, no en cada cuadro
+  (si no, un paso lento sortearía diez veces), y sólo entre lo que falta, para
+  que el último accesorio cueste lo mismo que el primero.
+
+  Las orejas son de **Shrek** (Kath es fanática), así que son las trompetas
+  verdes del ogro y no orejas paradas: salen de los costados de la cabeza y
+  necesitan `ANCHO_EXTRA` además de `ALTO_EXTRA`, porque el afro ya ocupa de
+  x=3 a x=20 de los 24 que tiene el cuadro y no quedaba lugar para que
+  asomaran. Y llevan contorno oscuro (`conBorde()`): sin él, un accesorio
+  verde sobre el césped —o sobre la alfombra del cuarto, que también es
+  verde— se camufla y desaparece. Todas las hojas del juego traen ese
+  contorno dibujado; el arte por código hay que acordarse de dárselo.
+
+  El placard va en (11,3), contra la pared derecha, y **no** debajo del
+  cuadro: ahí tapaba la casilla (10,3), que es desde donde se lee la carta, y
+  la dejaba inalcanzable.
+
+  **Post-mortem — "los pies se cortan" en la etapa 3 del compañero
+  (2026-08-17).** Parecía un problema de recorte (`COMPANERO_ANIM` mal
+  medido) y no lo era: medí las cuatro direcciones tres veces con scripts de
+  Python distintos, cada vez más rigurosos, y las coordenadas ya eran exactas
+  al píxel del contenido real de la hoja. El corte pasaba en tiempo de
+  ejecución, no en el archivo.
+
+  La causa: `dibujarBicho()` dibujaba directo desde `hojaCompanero` (cuadros
+  de hasta 194 px) escalando a `BICHO_ESC = 0.36` con
+  `ctx.imageSmoothingEnabled = false`. Sin suavizado, achicar así de fuerte
+  no promedia nada — toma un píxel de la fuente por cada píxel de destino y
+  se salta el resto. Una garra o una punta de ala mide 1-2 px en la fuente,
+  así que según en qué píxel exacto cae el muestreo, esa pasada la pinta
+  entera o se la come del todo. Por eso salía distinto según el cuadro de la
+  caminata y por qué achicar el rectángulo de recorte no cambiaba nada: el
+  recorte ya estaba bien, lo que fallaba era la escala.
+
+  Simulé el achique con Python (`Image.resize(..., NEAREST)` contra
+  `Image.resize(..., BOX)`) para confirmarlo antes de tocar código — con
+  NEAREST el pie desaparecía, con BOX (promedio de área) quedaba completo.
+  Mismo problema, mismo arreglo que ya dejaron anotado para `kath_baile.png`
+  y `merli_hoja.png`: promediar el área en vez de mirar un píxel. La
+  diferencia es que ahí lo hicieron una vez a mano con un script externo
+  (que no se guardó — ver deuda técnica 4f) y acá se hace en el propio
+  cliente: `construirBicho()` en `engine/motor.js` recorta y reescala cada
+  uno de los 48 cuadros UNA sola vez al cargar la hoja, con el suavizado
+  prendido sólo para ese paso, y cachea el resultado en `COMPANERO_SPR`.
+  `dibujarBicho()` dibuja esos cuadros ya achicados 1:1, con el suavizado
+  apagado de nuevo — así no se pierde nitidez en pantalla, sólo se evita
+  repetir el achique agresivo en cada frame.
+
+  Si algún día un personaje se ve con detalles finos que "parpadean" o
+  desaparecen según el cuadro de animación, es este mismo problema: buscar
+  un `drawImage` que achique mucho con el suavizado apagado.
+
+- **2026-08-17 — Doble check en cupones canjeados.** Cada canje lleva
+  `cumplidoEn` (el día en que Kath marcó que Diego se lo cumplió de verdad;
+  vacío = sigue esperando). `TabPremios.jsx` los parte en "Esperando a Diego",
+  con un botón ✓ por cupón, y "Ya cumplidos", con el ✓✓ verde y la fecha.
+
+  Lo que hubo que cuidar está en la sincronización, no en la pantalla:
+
+  - `fusion.js` unía los canjes por `cid` pisando uno con otro, así que la
+    copia sin marcar del otro dispositivo devolvía a la lista de espera un
+    premio ya recibido. Ahora se unen con `unirCanje()`: si cualquiera de los
+    dos lados lo tiene cumplido, queda cumplido, y ante dos fechas gana la más
+    temprana. Cubierto en `smoke.mjs` ("un cupon ya cumplido no vuelve a
+    quedar pendiente"), en los dos órdenes de fusión.
+  - `confirmarCanje()` recibe el canje y no su `cid`. La fusión arrastra tal
+    cual los canjes viejos anteriores al `cid`, así que buscar por un cid
+    vacío marcaba el primero de la lista que tampoco tuviera — un cupón
+    cualquiera.
+
+- **2026-08-17 — El huevo roto se va del jardín a las 2 horas.** `EST` guarda
+  `eclosionadoEn` y el motor saca la cáscara pasadas `HUEVO_DURA_MS`. Mira el
+  reloj y no un flag, así vale igual si Kath deja el juego abierto o si vuelve
+  al día siguiente.
+
+  Lo importante es que se va del mundo **entero**, no sólo del dibujo
+  (`quitarHuevoDelMundo()` limpia `objPorTile` y `solido` además de marcar
+  `oculto`): dejar sólo de dibujarlo habría puesto una pared invisible en el
+  medio del patio que además contestaba el botón A. Eso es lo que verifica
+  `smoke.mjs` ("la cascara vencida deja de tapar el paso"), no que se vea o no.
+
+  En la fusión, `eclosionadoEn` toma la fecha más temprana de los dos
+  dispositivos: con la más nueva, cada sincronización le habría regalado dos
+  horas más de vida a la cáscara.
+
+- **2026-08-17 — Formato automático del código de partida.** El input de
+  "pegá su código" en `TabAjustes.jsx` ahora limpia caracteres especiales y
+  agrupa con guiones en cada tecleo (`disco.normalizarCodigo` +
+  `disco.formatearCodigo`, recortado a `LARGO_CODIGO`). El aviso de
+  "Conectado, las dos partidas se fusionaron" y el de "Código copiado." al
+  usar el botón Copiar ya existían de antes en el mismo archivo (`decir(...)`
+  en `alConectar` y en el `onClick` del botón Copiar) — no hizo falta
+  agregar nada ahí, solo se confirmó que están.
+
+- **2026-08-17 — Cursor de manito en botones (desktop).** Regla en
+  `App.css` con `@media (hover:hover) and (pointer:fine)` para no afectar
+  el táctil: `cursor:pointer` en todo `button` habilitado, `not-allowed` en
+  los deshabilitados.
 
 - **2026-08-16 — Aura de XP alrededor de Kath.** Halo de gradiente radial
   dibujado en `engine/motor.js#dibujarAura()`, detrás de la sombra y del

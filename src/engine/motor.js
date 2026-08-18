@@ -1,13 +1,14 @@
 import { MAPA, SOLIDOS, OBJETOS, INICIO } from '../config/mapa.js';
-import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO, SPRITE_MERLI } from '../config/sprites.js';
+import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO, SPRITE_MERLI, SPRITE_HUEVO, SPRITE_COMPANERO } from '../config/sprites.js';
 import { FLAGS } from '../config/flags.js';
 import { dentroDeZonaMerli } from '../config/merli.js';
 /* niveles.js no importa nada, así que traerlo acá no arma el ciclo que sí
    armaría pedirle xpNecesaria() a gameLogic.js (ver el comentario de allá). */
 import { xpNecesaria } from '../state/niveles.js';
-import { TILE_SRC, S, TILE } from './drawing.js';
+import { TILE_SRC, S, TILE, lienzo } from './drawing.js';
 import { TILES } from './tiles.js';
 import { ART_OBJ, SPR } from './objetos.js';
+import { SPR_DISFRAZ, ALTO_EXTRA, ANCHO_EXTRA } from './disfraces.js';
 import { sonar } from './sonido.js';
 
 /* ---------------------------------------------------------------------------
@@ -25,6 +26,7 @@ let juego = {
   puedeEclosionar: () => false,
   etapaBicho: () => 0,
   estado: () => ({}),
+  alPisarCesped: () => {},
 };
 
 function conectar(api) { juego = { ...juego, ...api }; }
@@ -51,6 +53,8 @@ let hojaSprite = null;              // sprite sheet de la jugadora
 let hojaBaile = null;               // hoja del baile (mismo formato que la de caminar)
 let hojaDiego = null;               // sprite sheet de Diego (mismo formato)
 let hojaMerli = null;               // hoja de Merlí (ver config/sprites.js)
+let hojaHuevo = null;                // hoja del huevo (ver config/sprites.js)
+let hojaCompanero = null;            // hoja del compañero (ver config/sprites.js)
 const FRAME_W = 24, FRAME_H = 32;   // tamaño de cada frame del sheet
 const PIES = 30;                    // y donde terminan los pies dentro del frame
 const ESC_JUG = 3;                  // escala del sprite (3 = mismo tamaño de píxel que el escenario)
@@ -164,7 +168,83 @@ const jugadora = {
   bailando: false, tBaile: 0, baileHasta: 0, quieta: 0, baileCoreo: 0
 };
 
-const bicho = { px: 0, py: 0, dir: 0, visible: false, cola: [] };
+const bicho = { px: 0, py: 0, dir: 0, visible: false, cola: [], tAnim: 0 };
+
+/* Caminata del compañero: una etapa por entrada, y dentro las cuatro
+   direcciones en el mismo orden que DIRS (0 abajo, 1 izq, 2 der, 3 arriba).
+   Cada dirección son 4 cuadros que comparten `y`, `w` y `h`: la celda es
+   uniforme a propósito, así el ciclo no salta de tamaño ni de anclaje entre
+   cuadro y cuadro (los cuadros de la hoja tienen cada uno su propio recorte
+   ajustado, que sí variaba hasta 16 px).
+   Como el arte trae las cuatro direcciones dibujadas de verdad, acá no se
+   espeja nada: la fila es `dir` directo, igual que con Merlí. */
+const COMPANERO_ANIM = [
+  [ // etapa 1 — Kathi
+    { y: 771, w: 75, h: 109, x: [163, 268, 370, 476] },   // abajo
+    { y: 388, w: 89, h: 74, x: [158, 266, 372, 475] },    // izquierda
+    { y: 205, w: 87, h: 72, x: [161, 265, 365, 470] },    // derecha
+    { y: 548, w: 73, h: 124, x: [163, 270, 372, 475] },   // arriba
+  ],
+  [ // etapa 2 — Kathira
+    { y: 755, w: 73, h: 137, x: [596, 702, 810, 919] },   // abajo
+    { y: 355, w: 85, h: 119, x: [585, 696, 811, 918] },   // izquierda
+    { y: 164, w: 85, h: 121, x: [599, 710, 818, 927] },   // derecha
+    { y: 544, w: 81, h: 134, x: [592, 696, 804, 914] },   // arriba
+  ],
+  /* Ojo con esta etapa: en la hoja los rótulos de los laterales están
+     cruzados. La fila que dice "DERECHA" (y=133) tiene al bicho mirando a la
+     IZQUIERDA y la que dice "IZQUIERDA" (y=329) mirando a la derecha, así que
+     acá van al revés que en las otras dos etapas — que sí están bien. Se
+     mapearon por el dibujo, no por el texto; el mismo problema que ya había
+     traído la hoja de Merlí. */
+  [ // etapa 3 — Kathrix
+    { y: 743, w: 115, h: 166, x: [1025, 1156, 1282, 1406] },  // abajo
+    { y: 133, w: 117, h: 157, x: [1037, 1161, 1286, 1408] },  // izquierda
+    { y: 329, w: 118, h: 150, x: [1020, 1146, 1272, 1397] },  // derecha
+    { y: 509, w: 112, h: 194, x: [1025, 1153, 1279, 1408] },  // arriba
+  ],
+];
+const BICHO_ANIM_MS = 130;    // cuánto dura cada cuadro de la caminata
+const BICHO_QUIETO_EPS = 0.4; // px de distancia al destino por debajo de la cual se considera quieto
+
+/* Los cuadros del compañero no se dibujan directo desde la hoja: se
+   reescalan UNA vez a su tamaño final (COMPANERO_SPR) y de ahí se dibujan
+   1:1. Sin este paso, drawImage() tiene que achicar cuadros de hasta 194 px
+   a los ~40-70 que ocupan en pantalla (BICHO_ESC = 0.36) con el suavizado
+   apagado — y con el suavizado apagado, achicar así de fuerte no promedia
+   nada: toma un píxel de la fuente por cada píxel de destino y se salta el
+   resto. Un detalle fino como una garra o media pata mide 1-2 px en la
+   fuente, así que según en qué píxel exacto caiga el muestreo, esa pasada
+   puede pintarlo entero o comérselo del todo — es justo lo que se veía como
+   "los pies se cortan", y por qué salía distinto según el cuadro.
+   El achique en sí se hace con el suavizado prendido (una sola vez, en
+   construirBicho()), que si promedia el área en vez de mirar un solo píxel;
+   de ahí para adelante se dibuja con el suavizado apagado, para que quede
+   nítido y no salga borroso. */
+let COMPANERO_SPR = null;
+
+function construirBicho() {
+  if (!hojaCompanero) return;
+  COMPANERO_SPR = COMPANERO_ANIM.map((etapa) => etapa.map((fila) => {
+    const dw = Math.max(1, Math.round(fila.w * BICHO_ESC));
+    const dh = Math.max(1, Math.round(fila.h * BICHO_ESC));
+    return fila.x.map((x0) => {
+      const { c, g } = lienzo(dw, dh);
+      g.imageSmoothingEnabled = true;
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(hojaCompanero, x0, fila.y, fila.w, fila.h, 0, 0, dw, dh);
+      return c;
+    });
+  }));
+}
+
+/* Píxel de la hoja -> píxel en pantalla, el mismo número para las tres etapas
+   y las cuatro direcciones. Es a propósito: así el bicho crece de verdad al
+   evolucionar (de ~39 px de alto a ~60) en vez de que cada etapa se
+   reescale al mismo tamaño y la evolución no se note. Por lo mismo, de
+   frente y de espaldas se ve más largo que de costado — es el cuerpo visto a
+   lo largo, que es como está dibujado. */
+const BICHO_ESC = 0.36;
 
 /* Merlí: gato suelto que deambula solo por config/merli.js#ZONA_MERLI (no
    sigue a la jugadora como el bicho, ni depende de una interacción). Arranca
@@ -186,6 +266,109 @@ const merli = {
   moviendo: false, t: 0, desdeX: 0, desdeY: 0,
   espera: 800,
 };
+
+/* Huevo: hoja empaquetada, no en grilla uniforme (ver comentario en
+   config/sprites.js), así que cada cuadro es un rectángulo propio en vez de
+   fila*ancho + columna*alto como en las hojas de arriba. Coordenadas
+   sacadas midiendo el alfa de huevo_mascota.png. */
+const HUEVO_Y = { idle: 41, hatch: 729 };
+const HUEVO_H = { idle: 180, hatch: 181 };
+const HUEVO_IDLE_X = [
+  [35, 173], [200, 336], [364, 501], [529, 667], [705, 843],
+  [871, 1013], [1040, 1178], [1208, 1348], [1368, 1501], [1521, 1654],
+];
+const HUEVO_IDLE = HUEVO_IDLE_X.map(([x0, x1]) =>
+  ({ x: x0, y: HUEVO_Y.idle, w: x1 - x0, h: HUEVO_H.idle }));
+
+/* Secuencia completa de eclosión: entero -> grieta -> yema asomando ->
+   estalla -> cáscara rota. El último cuadro queda fijo para siempre como
+   decoración del huevo ya nacido. */
+const HUEVO_HATCH_X = [
+  [17, 143], [156, 280], [288, 415], [435, 564], [586, 715],
+  [731, 920], [920, 1129], [1144, 1262], [1278, 1473], [1473, 1659],
+];
+const HUEVO_HATCH = HUEVO_HATCH_X.map(([x0, x1]) =>
+  ({ x: x0, y: HUEVO_Y.hatch, w: x1 - x0, h: HUEVO_H.hatch }));
+
+const HUEVO_IDLE_MS = 150;   // cuánto dura cada cuadro del bamboleo
+const HUEVO_HATCH_MS = 150;  // cuánto dura cada cuadro de la eclosión
+
+/* Cuánto se queda la cáscara rota en el jardín después de que nace la
+   mascota. Pasado ese rato el huevo se va del mundo entero — no sólo del
+   dibujo — porque si no quedaría una casilla invisible que igual bloquea el
+   paso y contesta el botón A. */
+const HUEVO_DURA_MS = 2 * 60 * 60 * 1000;   // 2 horas
+
+/* Cuadro en el que la cáscara se termina de abrir (mirar HUEVO_HATCH: 0-4 es
+   el huevo entero agrietándose, 5 es cuando estalla). Ahí sale el bicho: no
+   al tocar el huevo, si no aparecería al lado de una cáscara todavía sana. */
+const HUEVO_CUADRO_NACE = 5;
+
+/* Sólo hay un huevo en el mapa, así que no hace falta guardar este estado
+   por objeto: 'activa' se prende cuando accionCompanero() eclosiona
+   (animarEclosionHuevo, más abajo) y se apaga sola al terminar la
+   secuencia; a partir de ahí el cuadro final sale del EST.eclosionado
+   guardado, así que sobrevive a un refresh de página.
+   `nace` guarda la casilla del huevo hasta que le toca aparecer al bicho, y
+   se limpia enseguida para no hacerlo nacer dos veces. */
+const huevoAnim = { activa: false, t: 0, nace: null };
+
+/* `tx, ty` es la casilla del huevo (la del objeto en config/mapa.js): el
+   bicho nace ahí adentro y desde ahí sale caminando solo a buscar a Kath,
+   porque actualizarBicho() lo manda al rastro que ella ya dejó. */
+function animarEclosionHuevo(tx, ty) {
+  huevoAnim.activa = true;
+  huevoAnim.t = 0;
+  huevoAnim.nace = { tx, ty };
+}
+
+/* Saca el huevo del mundo: deja de dibujarse, de tapar el paso y de contestar
+   al botón A. Es lo único que hace falta borrar a mano — `oculto` lo mira el
+   bucle de dibujo, y las otras dos cosas salen de las estructuras que armó
+   construirMundo(). Al recargar la página se rearma todo de cero y este mismo
+   chequeo lo vuelve a esconder, así que no hace falta guardar nada. */
+function quitarHuevoDelMundo() {
+  for (const o of OBJETOS) {
+    if (o.art !== 'huevo' || o.oculto) continue;
+    o.oculto = true;
+    for (let j = 0; j < o.th; j++) {
+      for (let i = 0; i < o.tw; i++) {
+        objPorTile.delete((o.x + i) + ',' + (o.y + j));
+        solido[o.y + j][o.x + i] = false;
+      }
+    }
+  }
+}
+
+/* La cáscara se va sola pasadas HUEVO_DURA_MS desde que nació la mascota.
+   Se mira el reloj en vez de un flag guardado para que valga igual si Kath
+   dejó el juego abierto o si vuelve al día siguiente. */
+function huevoVencido() {
+  const est = juego.estado();
+  if (!est.eclosionado) return false;
+  if (huevoAnim.activa) return false;            // que termine de romperse
+  if (!est.eclosionadoEn) return true;           // eclosionó antes de que existiera la marca
+  return Date.now() - est.eclosionadoEn >= HUEVO_DURA_MS;
+}
+
+function actualizarHuevo(dt) {
+  if (huevoVencido()) quitarHuevoDelMundo();
+  if (!huevoAnim.activa) return;
+  huevoAnim.t += dt;
+  if (huevoAnim.nace && huevoAnim.t >= HUEVO_CUADRO_NACE * HUEVO_HATCH_MS) {
+    bicho.px = huevoAnim.nace.tx * TILE;
+    bicho.py = huevoAnim.nace.ty * TILE;
+    bicho.dir = 0;                  // recién nacido, mirando a cámara
+    bicho.visible = true;
+    // El rastro que dejó Kath para llegar hasta acá ya está 3 casillas atrás:
+    // si se lo dejara puesto, el recién nacido saldría disparado a un punto
+    // detrás de ella, pasándola de largo. Sembrarlo con la casilla del huevo
+    // lo deja quieto donde nació y lo hace arrancar recién cuando Kath se va.
+    bicho.cola = [0, 1, 2].map(() => ({ x: bicho.px, y: bicho.py }));
+    huevoAnim.nace = null;
+  }
+  if (huevoAnim.t >= (HUEVO_HATCH.length - 1) * HUEVO_HATCH_MS) huevoAnim.activa = false;
+}
 
 const input = { dir: -1, a: false, aEdge: false };
 
@@ -217,9 +400,13 @@ function tilePasable(x, y) {
   return !solido[y][x];
 }
 
+function objetoEnTile(x, y) {
+  return objPorTile.get(x + ',' + y) || null;
+}
+
 function objetoFrente() {
   const d = DIRS[jugadora.dir];
-  const o = objPorTile.get((jugadora.tx + d.dx) + ',' + (jugadora.ty + d.dy));
+  const o = objetoEnTile(jugadora.tx + d.dx, jugadora.ty + d.dy);
   return (o && o.accion) ? o : null;
 }
 
@@ -295,6 +482,10 @@ function actualizarJugadora(dt) {
       jugadora.moviendo = false;
       jugadora.paso ^= 1;
       registrarCola();
+      // Recién terminado el paso, no en cada cuadro: si no, un paso lento
+      // sortearía el hallazgo diez veces y el césped sería una lluvia de
+      // accesorios. Quién decide si aparece algo es juego.js.
+      if (MAPA[jugadora.ty][jugadora.tx] === 'G') juego.alPisarCesped();
     }
     return;
   }
@@ -322,11 +513,21 @@ function registrarCola() {
   if (bicho.cola.length > 3) bicho.cola.shift();
 }
 
-function actualizarBicho() {
+function actualizarBicho(dt) {
   if (!bicho.visible || bicho.cola.length < 3) return;
   const dest = bicho.cola[0];
-  bicho.px += (dest.x - bicho.px) * 0.16;
-  bicho.py += (dest.y - bicho.py) * 0.16;
+  const dx = dest.x - bicho.px, dy = dest.y - bicho.py;
+  bicho.px += dx * 0.16;
+  bicho.py += dy * 0.16;
+
+  // Mira hacia donde se está moviendo, por el eje que más lo corre. El reloj
+  // de la animación sólo corre mientras camina: quieto se queda en el primer
+  // cuadro, si no parecería estar pisando en el lugar.
+  if (Math.abs(dx) <= BICHO_QUIETO_EPS && Math.abs(dy) <= BICHO_QUIETO_EPS) return;
+  bicho.dir = Math.abs(dx) > Math.abs(dy)
+    ? (dx > 0 ? 2 : 1)
+    : (dy > 0 ? 0 : 3);
+  bicho.tAnim += dt;
 }
 
 /* Merlí no sigue a nadie: cada tanto sortea una casilla vecina dentro de su
@@ -437,7 +638,7 @@ function dibujar(dt) {
   // las cosas planas (alfombras, flores) son parte del piso: van antes que todo,
   // si no una alfombra grande termina tapando a la jugadora
   for (const o of OBJETOS) {
-    if (!o.decor) continue;
+    if (!o.decor || o.oculto) continue;
     if (o.x + o.tw < x0 - 1 || o.x > x1 + 1 || o.y + o.th < y0 - 1 || o.y > y1 + 1) continue;
     dibujarObjeto(o);
   }
@@ -445,7 +646,7 @@ function dibujar(dt) {
   // el resto se ordena por su base para que la jugadora pase por delante o por detrás
   const lista = [];
   for (const o of OBJETOS) {
-    if (o.decor) continue;
+    if (o.decor || o.oculto) continue;
     if (o.x + o.tw < x0 - 1 || o.x > x1 + 1 || o.y + o.th < y0 - 1 || o.y > y1 + 1) continue;
     lista.push({ tipo: 'obj', o, base: (o.y + o.th) * TILE });
   }
@@ -489,20 +690,60 @@ function dibujarPersonaje(hoja, o) {
   if (hoja) ctx.drawImage(hoja, 0, dir * FRAME_H, FRAME_W, FRAME_H, dx, dy, w, h);
 }
 
+/* Huevo del jardín: bambolea quieto en el mapa, y cuando accionCompanero()
+   lo eclosiona (animarEclosionHuevo) reproduce la grieta -> estallido una
+   sola vez. Terminada esa secuencia, o directo si se recarga la página con
+   EST.eclosionado ya en true, se queda en el último cuadro (cáscara rota)
+   para siempre. */
+function dibujarHuevo(o, dx, dy, w, h) {
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(dx + w / 2, dy + h - 5, w * 0.36, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (!hojaHuevo) return;
+
+  let frame;
+  if (huevoAnim.activa) {
+    const idx = Math.min(HUEVO_HATCH.length - 1, Math.floor(huevoAnim.t / HUEVO_HATCH_MS));
+    frame = HUEVO_HATCH[idx];
+  } else if (juego.estado().eclosionado) {
+    frame = HUEVO_HATCH[HUEVO_HATCH.length - 1];
+  } else {
+    const idx = Math.floor(tiempoAnim / HUEVO_IDLE_MS) % HUEVO_IDLE.length;
+    frame = HUEVO_IDLE[idx];
+  }
+
+  // los cuadros no vienen todos del mismo tamaño (hoja empaquetada, no
+  // grilla uniforme): se escalan por altura y se anclan centrados abajo,
+  // así el huevo se apoya siempre en el mismo lugar de la casilla.
+  const boxH = h * 1.35;
+  const esc = boxH / frame.h;
+  const dw = frame.w * esc, dh = frame.h * esc;
+  const ddx = Math.round(dx + w / 2 - dw / 2);
+  const ddy = Math.round(dy + h - dh);
+  ctx.drawImage(hojaHuevo, frame.x, frame.y, frame.w, frame.h, ddx, ddy, dw, dh);
+}
+
 function dibujarObjeto(o) {
   if (o.personaje) { dibujarPersonaje(hojaDiego, o); return; }
-  const img = SPR[o.art];
   const dx = Math.round(o.x * TILE - cam.x);
   const dy = Math.round(o.y * TILE - cam.y);
   const w = o.tw * TILE, h = o.th * TILE;
-  if (!o.decor && !o.pared) {
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
-    ctx.beginPath();
-    ctx.ellipse(dx + w / 2, dy + h - 5, w * 0.36, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
+
+  if (o.art === 'huevo') {
+    dibujarHuevo(o, dx, dy, w, h);
+  } else {
+    const img = SPR[o.art];
+    if (!o.decor && !o.pared) {
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.beginPath();
+      ctx.ellipse(dx + w / 2, dy + h - 5, w * 0.36, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.drawImage(img, dx, dy, w, h);
+    if (o.art === 'tvpared') dibujarPantallaTele(dx, dy);
   }
-  ctx.drawImage(img, dx, dy, w, h);
-  if (o.art === 'tvpared') dibujarPantallaTele(dx, dy);
 
   // burbuja de estado sobre las misiones
   if (o.accion === 'mision') {
@@ -615,26 +856,51 @@ function dibujarJugadora() {
     const p = jugadora.t / MOV_MS;
     f = p < 0.5 ? (jugadora.paso ? 3 : 1) : (jugadora.paso ? 2 : 0);
   }
+  // El accesorio se parte en dos: lo que va detrás (la capa asomando por los
+  // costados) antes del sprite, y lo que va delante (orejas, antenas) después.
+  const disfraz = SPR_DISFRAZ[juego.estado().disfrazPuesto];
+  const capas = disfraz ? disfraz[fila] : null;
+  if (capas && capas.atras) dibujarCapaDisfraz(capas.atras, dx, dy);
+
   if (hoja) {
     ctx.drawImage(hoja, f * FRAME_W, fila * FRAME_H, FRAME_W, FRAME_H, dx, dy, w, h);
   } else {
     ctx.fillStyle = '#f06292';
     ctx.fillRect(dx + 12, dy + 20, 26, 34);
   }
+
+  if (capas && capas.adelante) dibujarCapaDisfraz(capas.adelante, dx, dy);
 }
 
+/* El lienzo del accesorio es ALTO_EXTRA filas más alto que el cuadro, para que
+   las orejas y las antenas puedan salirse por arriba (ver engine/disfraces.js).
+   Se sube otro tanto al dibujarlo, así el resto cae justo sobre el sprite. */
+function dibujarCapaDisfraz(img, dx, dy) {
+  ctx.drawImage(img,
+    dx - ANCHO_EXTRA * ESC_JUG, dy - ALTO_EXTRA * ESC_JUG,
+    (FRAME_W + ANCHO_EXTRA * 2) * ESC_JUG, (FRAME_H + ALTO_EXTRA) * ESC_JUG);
+}
+
+/* El compañero usa la fila de su dirección tal cual (la hoja trae las cuatro
+   dibujadas de verdad, no un espejo) y el cuadro del ciclo de caminata.
+   Quieto se congela en el primero, igual que Merlí. */
 function dibujarBicho() {
   const et = juego.etapaBicho();
   if (et < 0) return;
-  const img = SPR.__bichos[et];
-  const flot = Math.sin(tiempoAnim / 260) * 2;
-  const dx = Math.round(bicho.px - cam.x + TILE / 2 - TILE * 0.38);
-  const dy = Math.round(bicho.py - cam.y + TILE - TILE * 0.72 + flot);
+  const cx = Math.round(bicho.px - cam.x + TILE / 2);
+  const suelo = Math.round(bicho.py - cam.y + TILE * 0.85);
+
+  if (!COMPANERO_SPR) return;
+  const cuadros = COMPANERO_SPR[Math.min(et, COMPANERO_SPR.length - 1)][bicho.dir];
+  const cuadro = cuadros[Math.floor(bicho.tAnim / BICHO_ANIM_MS) % cuadros.length];
+  const dw = cuadro.width, dh = cuadro.height;
+
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath();
-  ctx.ellipse(dx + TILE * 0.38, dy + TILE * 0.72, 12, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, suelo, dw * 0.36, Math.max(3, dw * 0.13), 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.drawImage(img, dx, dy, TILE * 0.76, TILE * 0.76);
+
+  ctx.drawImage(cuadro, Math.round(cx - dw / 2), Math.round(suelo - dh));
 }
 
 /* A diferencia del bicho, la hoja de Merlí trae las 4 direcciones dibujadas de
@@ -688,8 +954,12 @@ function cargarSprite(listo) {
     cargarImagen(VIDEO_TELE),
     FLAGS.diego ? cargarImagen(SPRITE_DIEGO) : Promise.resolve(null),
     cargarImagen(SPRITE_MERLI),
-  ]).then(([sp, bl, tv, dg, mr]) => {
-    hojaSprite = sp; hojaBaile = bl; hojaTele = tv; hojaDiego = dg; hojaMerli = mr; listo();
+    cargarImagen(SPRITE_HUEVO),
+    cargarImagen(SPRITE_COMPANERO),
+  ]).then(([sp, bl, tv, dg, mr, hv, cp]) => {
+    hojaSprite = sp; hojaBaile = bl; hojaTele = tv; hojaDiego = dg; hojaMerli = mr; hojaHuevo = hv; hojaCompanero = cp;
+    construirBicho();
+    listo();
   });
 }
 
@@ -698,8 +968,9 @@ function bucle(ts) {
   const dt = Math.min(50, ts - ultimo || 16);
   ultimo = ts;
   actualizarJugadora(dt);
-  actualizarBicho();
+  actualizarBicho(dt);
   actualizarMerli(dt);
+  actualizarHuevo(dt);
   actualizarAura(dt);
   actualizarCamara(false);
   dibujar(dt);
@@ -720,8 +991,9 @@ function arrancarBucle() {
 export {
   conectar, montarCanvas, arrancarBucle, cargarSprite,
   jugadora, bicho, merli, input,
-  construirMundo, tilePasable, objetoFrente,
+  construirMundo, tilePasable, objetoFrente, objetoEnTile,
   ajustarCanvas, actualizarCamara, actualizarJugadora, actualizarBicho, actualizarMerli,
-  actualizarAura, auraActiva,
+  actualizarAura, auraActiva, actualizarHuevo,
   registrarCola, dibujar, bailar, BAILE,
+  animarEclosionHuevo,
 };

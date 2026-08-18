@@ -58,7 +58,7 @@ const cache = new Map();
 const oyentesDoc = new Map();
 
 /* Las cinco pestañas del menú, para poder clickearlas. */
-const tabs = ['misiones', 'progreso', 'premios', 'compa', 'ajustes'].map((p) => {
+const tabs = ['misiones', 'progreso', 'premios', 'compa', 'placard', 'ajustes'].map((p) => {
   const t = elStub('tab-' + p, 'tab');
   t.dataset = { p };
   return t;
@@ -162,6 +162,7 @@ console.log('modulo importado, exports:', Object.keys(mod), '\n');
    haya internet ni escribir en la base de producción. Más abajo se vuelve a
    prender, pero apuntando al Worker corriendo en este mismo proceso. */
 const cfg = (await vite.ssrLoadModule('/src/config/config.js')).CONFIG;
+const { DISFRACES } = await vite.ssrLoadModule('/src/config/disfraces.js');
 cfg.nube = '';
 
 paso('montarCanvas + iniciar()', () => {
@@ -294,6 +295,23 @@ paso('merli: fuera del juego se queda quieta', () => {
     throw new Error('se movio con el menu abierto');
   }
   uiSt.setModo('juego');
+});
+
+/* La cáscara del huevo se va sola del jardín pasadas dos horas. Lo que no
+   puede pasar es que deje una casilla invisible que igual tape el paso: sería
+   una pared fantasma en el medio del patio. */
+paso('huevo: la cascara vencida deja de tapar el paso', () => {
+  const est = logica.obtenerEstado();
+  const HUEVO = { x: 16, y: 16 };
+  est.eclosionado = true;
+  est.eclosionadoEn = Date.now();          // recién nacida
+  motor.actualizarHuevo(16);
+  if (motor.tilePasable(HUEVO.x, HUEVO.y)) throw new Error('la cascara recien rota ya no ocupa lugar');
+
+  est.eclosionadoEn = Date.now() - (2 * 60 * 60 * 1000 + 1000);   // dos horas y monedas
+  motor.actualizarHuevo(16);
+  if (!motor.tilePasable(HUEVO.x, HUEVO.y)) throw new Error('quedo una casilla invisible bloqueando');
+  if (motor.objetoEnTile(HUEVO.x, HUEVO.y)) throw new Error('sigue contestando al boton A');
 });
 
 /* Aura de XP: el estallido lo dispara el motor mirando EST.nivel, no un aviso
@@ -452,6 +470,71 @@ paso('fusion: los canjes no se duplican ni se comen', () => {
   const f = fusion.fusionar(a, b);
   igual(f.canjeados.length, 2, 'canjes');
   igual(f.oro, 110, 'oro = 200 ganadas - 30 del abrazo - 60 de la peli');
+});
+
+paso('disfraces: aparecen todos y no se repiten', () => {
+  const est = logica.obtenerEstado();
+  est.disfraces = [];
+  const vistos = new Set();
+  // El sorteo es al azar, así que se camina "mucho" y se comprueba el
+  // invariante que importa: nunca sale dos veces el mismo, y con suficientes
+  // pasos aparecen todos.
+  for (let i = 0; i < 40000 && vistos.size < DISFRACES.length; i++) {
+    const d = logica.buscarDisfrazEnCesped();
+    if (!d) continue;
+    if (vistos.has(d.id)) throw new Error('salio dos veces: ' + d.id);
+    vistos.add(d.id);
+  }
+  igual(vistos.size, DISFRACES.length, 'aparecieron todos');
+  igual(logica.buscarDisfrazEnCesped(), null, 'con la coleccion completa ya no aparece nada');
+});
+
+paso('disfraces: solo se puede poner lo que ya encontro', () => {
+  const est = logica.obtenerEstado();
+  est.disfraces = ['orejas'];
+  est.disfrazPuesto = null;
+  if (logica.ponerDisfraz('capa')) throw new Error('dejo poner una capa que no tiene');
+  igual(est.disfrazPuesto, null, 'sigue sin nada puesto');
+  if (!logica.ponerDisfraz('orejas')) throw new Error('no dejo poner lo que si tiene');
+  igual(est.disfrazPuesto, 'orejas', 'quedo puesto');
+  logica.ponerDisfraz(null);
+  igual(est.disfrazPuesto, null, 'null lo saca');
+});
+
+paso('fusion: los disfraces se suman y no queda puesto uno que no esta', () => {
+  const a = partidaBase({ seq: 1, disfraces: ['orejas'], disfrazPuesto: 'orejas' });
+  const b = partidaBase({ seq: 2, disfraces: ['capa'], disfrazPuesto: 'capa' });
+  const f = fusion.fusionar(a, b);
+  igual(f.disfraces.slice().sort().join(','), 'capa,orejas', 'se suman los dos');
+  igual(f.disfrazPuesto, 'capa', 'queda el del ultimo que escribio');
+  // Y el caso feo: el que escribio ultimo tiene puesto algo que la coleccion
+  // fusionada no contiene (partida vieja, o un id que ya no existe).
+  const c = partidaBase({ seq: 3, disfraces: [], disfrazPuesto: 'fantasma' });
+  igual(fusion.fusionar(a, c).disfrazPuesto, null, 'no queda puesto un disfraz que no tiene');
+});
+
+paso('fusion: un cupon ya cumplido no vuelve a quedar pendiente', () => {
+  // El caso real: Kath marca el segundo tilde en el telefono y la tablet, que
+  // todavia lo tiene pendiente, sincroniza despues. Sin unir por cid la copia
+  // sin marcar pisaba a la marcada y el premio recibido volvia a la lista de
+  // espera.
+  const pendiente = { cid: 'a1', id: 'abrazo', fecha: '2026-08-15', cumplidoEn: null };
+  const cumplido = { ...pendiente, cumplidoEn: '2026-08-16' };
+  const a = partidaBase({ seq: 1, oroGanado: 200, canjeados: [cumplido] });
+  const b = partidaBase({ seq: 2, oroGanado: 200, canjeados: [pendiente] });
+  igual(fusion.fusionar(a, b).canjeados.length, 1, 'sigue siendo un solo canje');
+  igual(fusion.fusionar(a, b).canjeados[0].cumplidoEn, '2026-08-16', 'gana el que esta cumplido');
+  igual(fusion.fusionar(b, a).canjeados[0].cumplidoEn, '2026-08-16', 'y no depende del orden');
+});
+
+paso('fusion: la mascota nacio una sola vez, vale la fecha mas temprana', () => {
+  // Si ganara la mas nueva, cada sincronizacion le regalaria dos horas mas de
+  // vida a la cascara rota del jardin.
+  const a = partidaBase({ seq: 1, eclosionado: true, eclosionadoEn: 1000 });
+  const b = partidaBase({ seq: 2, eclosionado: true, eclosionadoEn: 9000 });
+  igual(fusion.fusionar(a, b).eclosionadoEn, 1000, 'la mas temprana');
+  const c = partidaBase({ seq: 2, eclosionado: false, eclosionadoEn: 0 });
+  igual(fusion.fusionar(a, c).eclosionadoEn, 1000, 'el que no sabe la fecha no la borra');
 });
 
 paso('fusion: el oro nunca queda negativo', () => {
@@ -674,6 +757,7 @@ for (const [nombre, ruta] of [
   ['TabProgreso', '/src/components/Menu/TabProgreso.jsx'],
   ['TabPremios', '/src/components/Menu/TabPremios.jsx'],
   ['TabCompa', '/src/components/Menu/TabCompa.jsx'],
+  ['TabPlacard', '/src/components/Menu/TabPlacard.jsx'],
   ['TabAjustes', '/src/components/Menu/TabAjustes.jsx'],
 ]) {
   // eslint-disable-next-line no-await-in-loop

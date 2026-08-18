@@ -187,11 +187,19 @@ const ART_OBJ = {
     [1, 4, 3, 6, '#6fc4b4'], [1, 4, 3, 1, '#8ed6c8']
   ]},
 
-  huevo: { tw: 1, th: 1, r: [
-    [3, 12, 10, 4, '#c8c2b6'], [3, 12, 10, 1, '#ddd8ce'],
-    ...oval(8, 8, 4, 6, '#fdf4e3'),
-    ...oval(7, 6, 2, 2, '#ffffff'),
-    [6, 9, 2, 2, '#f4a3bf'], [10, 7, 2, 2, '#f4a3bf'], [8, 12, 2, 1, '#f4a3bf']
+  /* El huevo se dibuja con la hoja de sprites (motor.js#dibujarHuevo), no con
+     arte por código: sólo queda acá para que tw/th/decor/pared sigan saliendo
+     de ART_OBJ como el resto de los objetos. */
+  huevo: { tw: 1, th: 1, r: [] },
+
+  /* Placard de los disfraces: dos puertas altas con espejo y tiradores. */
+  placard: { tw: 1, th: 2, r: [
+    [1, 0, 14, 32, '#8b5e3c'], [1, 0, 14, 1, '#a06a42'],
+    [2, 2, 5, 27, '#6b4526'], [9, 2, 5, 27, '#6b4526'],
+    [3, 3, 3, 12, '#c8dbe8'], [3, 3, 3, 4, '#e6f2f8'],       // espejo de la izquierda
+    [10, 3, 3, 25, '#7a4f2e'], [10, 3, 3, 1, '#8b5e3c'],
+    [7, 13, 1, 4, '#f7c948'], [8, 13, 1, 4, '#f7c948'],      // tiradores
+    [1, 29, 14, 3, '#6b4526'], [2, 31, 2, 1, '#4a2f19'], [12, 31, 2, 1, '#4a2f19']
   ]},
 
   arbol: { tw: 1, th: 2, r: [
@@ -220,49 +228,6 @@ const ART_OBJ = {
   diego: { tw: 1, th: 1, r: [] },
 };
 
-/* --- criaturas (compañero) ---------------------------------------------- */
-const ART_BICHO = [
-  { // etapa 1 — bebé
-    tw: 1, th: 1, r: [
-      ...oval(8, 10, 5, 5, '#f4a3bf'),
-      ...oval(8, 8, 4, 3, '#ffc4d8'),
-      [5, 8, 2, 2, '#2b2b2b'], [9, 8, 2, 2, '#2b2b2b'],
-      [5, 8, 1, 1, '#ffffff'], [9, 8, 1, 1, '#ffffff'],
-      [7, 11, 2, 1, '#e05572'],
-      [4, 3, 2, 4, '#f4a3bf'], [10, 3, 2, 4, '#f4a3bf'],
-      [4, 2, 2, 2, '#ffd9e6'], [10, 2, 2, 2, '#ffd9e6'],
-      [3, 14, 3, 2, '#e58bab'], [10, 14, 3, 2, '#e58bab']
-    ]
-  },
-  { // etapa 2
-    tw: 1, th: 1, r: [
-      ...oval(8, 9, 6, 6, '#e07bb0'),
-      ...oval(8, 7, 5, 4, '#f7a8d0'),
-      [4, 6, 2, 3, '#2b2b2b'], [10, 6, 2, 3, '#2b2b2b'],
-      [4, 6, 1, 1, '#ffffff'], [10, 6, 1, 1, '#ffffff'],
-      [6, 10, 4, 1, '#b8407e'],
-      [2, 2, 3, 5, '#e07bb0'], [11, 2, 3, 5, '#e07bb0'],
-      [2, 1, 3, 2, '#ffd9e6'], [11, 1, 3, 2, '#ffd9e6'],
-      [0, 8, 3, 2, '#c9a0f0'], [13, 8, 3, 2, '#c9a0f0'],
-      [3, 14, 3, 2, '#c96a97'], [10, 14, 3, 2, '#c96a97']
-    ]
-  },
-  { // etapa 3 — final
-    tw: 1, th: 1, r: [
-      ...oval(8, 9, 7, 6, '#b06ad8'),
-      ...oval(8, 7, 6, 4, '#d093f0'),
-      [3, 6, 3, 3, '#1a1a2e'], [10, 6, 3, 3, '#1a1a2e'],
-      [3, 6, 1, 1, '#ffffff'], [10, 6, 1, 1, '#ffffff'],
-      [6, 10, 4, 1, '#7a3fa8'],
-      [1, 0, 3, 6, '#b06ad8'], [12, 0, 3, 6, '#b06ad8'],
-      [1, 0, 3, 2, '#f7c948'], [12, 0, 3, 2, '#f7c948'],
-      [0, 8, 4, 2, '#f4a3bf'], [12, 8, 4, 2, '#f4a3bf'],
-      [7, 2, 2, 2, '#f7c948'],
-      [2, 14, 4, 2, '#8f4fb8'], [10, 14, 4, 2, '#8f4fb8']
-    ]
-  }
-];
-
 /* --- caché de sprites construidos --------------------------------------- */
 const SPR = {};
 function construirObjetos() {
@@ -270,7 +235,6 @@ function construirObjetos() {
     const o = ART_OBJ[k];
     SPR[k] = pintar(o.tw * TILE_SRC, o.th * TILE_SRC, o.r);
   }
-  SPR.__bichos = ART_BICHO.map(b => pintar(TILE_SRC, TILE_SRC, b.r));
   // burbuja de "!" para misiones pendientes
   SPR.__alerta = pintar(16, 16, [
     ...circ(8, 7, 7, '#ffffff'), ...circ(8, 7, 6, '#f06292'),
@@ -285,4 +249,4 @@ function construirObjetos() {
   ]);
 }
 
-export { ART_OBJ, ART_BICHO, SPR, construirObjetos };
+export { ART_OBJ, SPR, construirObjetos };

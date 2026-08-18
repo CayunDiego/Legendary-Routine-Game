@@ -7,11 +7,12 @@ import { COMPANERO } from '../config/companero.js';
 import { TILE } from '../engine/drawing.js';
 import { construirTiles } from '../engine/tiles.js';
 import { construirObjetos } from '../engine/objetos.js';
+import { construirDisfraces } from '../engine/disfraces.js';
 import { iniciarAudio, sonar, setSonido } from '../engine/sonido.js';
 import {
   conectar, jugadora, bicho, input,
   construirMundo, objetoFrente, ajustarCanvas, actualizarCamara, registrarCola,
-  bailar, BAILE,
+  bailar, BAILE, animarEclosionHuevo,
 } from '../engine/motor.js';
 import { TECLAS_DIR, TECLAS_A, TECLAS_B, TECLAS_MENU, pilaDir, pintarDpad } from '../engine/input.js';
 import { $ } from '../dom.js';
@@ -20,6 +21,7 @@ import {
   EST, guardar, cargar, chequearDia, alReemplazar,
   misionPorId, hechoHoy, contarHechasHoy, progresoDelDia, completarMision,
   etapaBicho, puedeEclosionar, nombreBicho,
+  buscarDisfrazEnCesped,
 } from '../state/gameLogic.js';
 import { pedirPermanencia } from '../state/persistencia.js';
 import * as sync from '../state/sync.js';
@@ -43,7 +45,8 @@ function interactuar(o) {
     case 'premios': abrirMenu('premios'); break;
     case 'progreso': accionNotebook(); break;
     case 'tele': accionTele(); break;
-    case 'companero': accionCompanero(); break;
+    case 'companero': accionCompanero(o); break;
+    case 'placard': abrirMenu('placard'); break;
     case 'info': accionCartel(); break;
     case 'diego': accionDiego(); break;
   }
@@ -113,7 +116,9 @@ function confirmarMision(id) {
     cola.push({ t: `Te quedan ${r.resta} para completar esta misión hoy.` });
   }
   if (r.subio) {
+    const nivelAntes = EST.nivel - r.subio;
     for (let i = 0; i < r.subio; i++) cola.push({ t: `¡SUBISTE AL NIVEL ${EST.nivel - r.subio + i + 1}!\n${fraseNivel(EST.nivel - r.subio + i + 1)}`, fanfarria: true });
+    agregarEvolucion(cola, nivelAntes, EST.nivel);
   }
   const p = progresoDelDia();
   if (p.hechas === p.total) {
@@ -125,6 +130,34 @@ function confirmarMision(id) {
     cola.push({ t: '¡El huevo del jardín se está moviendo!\nAndá a verlo.' });
   }
   dialogo(cola);
+}
+
+/* Evolución del compañero: se detecta comparando el nivel antes y después de
+   ganar XP, no con un flag guardado — así vale para cualquier salto (incluso
+   de varios niveles de una) sin acordarse de tocar dos lados. La primera
+   etapa (nacer) ya tiene su propio momento en accionCompanero(); acá sólo
+   importan las siguientes. */
+function agregarEvolucion(cola, nivelAntes, nivelAhora) {
+  if (!EST.eclosionado) return;
+  COMPANERO.etapas.forEach((e, i) => {
+    if (i === 0 || nivelAntes >= e.desde || nivelAhora < e.desde) return;
+    sonar('eclosion');
+    dispararFlash();
+    cola.push({ t: `¡Evolucionó! ✨\nAhora es ${nombreBicho()}.\n${e.desc}`, retrato: i, fanfarria: true });
+  });
+}
+
+/* Lo llama el motor cada vez que Kath termina un paso sobre el césped. El
+   sorteo y la colección viven en gameLogic; acá sólo queda avisarle. */
+function alPisarCesped() {
+  const d = buscarDisfrazEnCesped();
+  if (!d) return;
+  sonar('eclosion');
+  dispararFlash();
+  dialogo([
+    { t: `${d.hallazgo}`, fanfarria: true },
+    { t: `¡${d.icono} ${d.nombre}!\n${d.desc}\n\nLo guardaste en el placard del cuarto.`, fanfarria: true },
+  ]);
 }
 
 function fraseNivel(n) {
@@ -155,7 +188,10 @@ function accionAnimo() {
         if (r) mostrarRecompensa(r.xp, r.oro);
         guardar();
         const cola = [{ t: a.resp, premio: r ? `+${r.xp} XP   +${r.oro} 💰` : null }];
-        if (r && r.subio) cola.push({ t: `¡SUBISTE AL NIVEL ${EST.nivel}!`, fanfarria: true });
+        if (r && r.subio) {
+          cola.push({ t: `¡SUBISTE AL NIVEL ${EST.nivel}!`, fanfarria: true });
+          agregarEvolucion(cola, EST.nivel - r.subio, EST.nivel);
+        }
         dialogo(cola);
       }
     }))
@@ -204,14 +240,16 @@ function accionCartel() {
   ]);
 }
 
-function accionCompanero() {
+function accionCompanero(o) {
   if (puedeEclosionar()) {
     EST.eclosionado = true;
-    bicho.visible = true;
-    bicho.px = jugadora.px; bicho.py = jugadora.py;
+    EST.eclosionadoEn = Date.now();
     guardar();
     sonar('eclosion');
     dispararFlash();
+    // El bicho no se prende acá: nace adentro del huevo, y lo hace visible
+    // el motor cuando la cáscara se abre (ver animarEclosionHuevo).
+    animarEclosionHuevo(o.x, o.y);
     dialogo([
       { t: '¡El huevo se está rompiendo!', fanfarria: true },
       { t: `¡Nació ${COMPANERO.etapas[0].nombre}!\n${COMPANERO.etapas[0].desc}` },
@@ -400,12 +438,13 @@ function iniciar() {
   // El motor dibuja las burbujas de estado sobre los objetos y frena el
   // movimiento fuera del juego, así que necesita consultar esto de acá.
   conectar({
-    juegoActivo, misionPorId, hechoHoy, puedeEclosionar, etapaBicho,
+    juegoActivo, misionPorId, hechoHoy, puedeEclosionar, etapaBicho, alPisarCesped,
     estado: () => EST,
   });
 
   construirTiles();
   construirObjetos();
+  construirDisfraces();
   construirMundo();
 
   cargar();

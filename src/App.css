@@ -15,6 +15,11 @@
 }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+/* Solo con mouse de verdad (no táctil): manito sobre los botones. */
+@media (hover:hover) and (pointer:fine){
+  button:not(:disabled){cursor:pointer}
+  button:disabled{cursor:not-allowed}
+}
 html,body{height:100%;overscroll-behavior:none}
 body{
   background:#0d0d18;
@@ -127,6 +132,7 @@ body{
 #dialogo.carta{background:#fff3f7;box-shadow:0 0 0 3px #ffd8e6 inset,0 8px 20px rgba(0,0,0,.45)}
 #dialogo.fanfarria{background:#fffaf0;box-shadow:0 0 0 3px #ffe6a8 inset,0 0 26px rgba(247,201,72,.5)}
 #dlgTexto{font-size:15.5px;line-height:1.5;white-space:pre-wrap;font-weight:600;min-height:2.9em}
+.dlgRetrato{display:block;margin:0 auto 8px;max-height:120px;max-width:70%;image-rendering:pixelated}
 #dlgPremio{
   margin-top:8px;display:none;font-weight:900;color:var(--rosa-osc);
   font-size:14px;letter-spacing:.3px;
@@ -303,6 +309,9 @@ body{
 .btnCanje:disabled{background:#e6e0d6;box-shadow:0 3px 0 #c9c1b4;color:#a99f93}
 .btnCanje:active:not(:disabled){transform:translateY(3px);box-shadow:none}
 
+/* El segundo tilde del cupón cumplido, verde como el "recibido" de un chat. */
+.dobleTilde{color:#4a9c3f;font-weight:900;letter-spacing:-2px;margin-right:3px}
+
 .hist{display:flex;flex-direction:column;gap:5px;margin-top:6px}
 .histDia{
   display:flex;justify-content:space-between;font-size:12.5px;
@@ -379,7 +388,7 @@ body{
 .chipAnimo b{color:var(--rosa-osc)}
 
 .bichoGrande{font-size:54px}
-.bichoLienzo{image-rendering:pixelated;width:96px;height:96px}
+.bichoRetrato{image-rendering:pixelated;display:block;margin:0 auto;height:112px;width:auto}
 
 /* pantallas anchas: el juego se ve más grande al costado */
 @media (min-width:900px) and (min-height:700px){

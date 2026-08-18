@@ -1,24 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { COMPANERO } from '../../config/companero.js';
 import { EST, etapaBicho, nombreBicho, guardar } from '../../state/gameLogic.js';
-import { SPR } from '../../engine/objetos.js';
+import { retratoBicho } from '../../engine/retratosCompanero.js';
 import { sonar } from '../../engine/sonido.js';
 
 export default function TabCompa() {
   const et = etapaBicho();
-  const lienzo = useRef(null);
   const [nombre, setNombre] = useState(EST.bichoNombre || '');
-
-  /* El bicho se dibuja sobre un canvas, no es una imagen: hay que pintarlo a
-     mano cada vez que cambia la etapa. */
-  useEffect(() => {
-    const c = lienzo.current;
-    if (!c || et < 0) return;
-    const g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    g.clearRect(0, 0, 96, 96);
-    if (SPR.__bichos && SPR.__bichos[et]) g.drawImage(SPR.__bichos[et], 0, 0, 96, 96);
-  }, [et]);
 
   if (et < 0) {
     const faltan = Math.max(0, COMPANERO.nivelEclosion - EST.nivel);
@@ -41,7 +29,7 @@ export default function TabCompa() {
   return (
     <>
       <div className="panel centro">
-        <canvas ref={lienzo} id="lienzoBicho" width="96" height="96" className="bichoLienzo"></canvas>
+        {retratoBicho(et) && <img className="bichoRetrato" src={retratoBicho(et)} alt="" />}
         <div className="panelTitulo">{nombreBicho()}</div>
         <div className="sub">{e.desc}</div>
         <div className="sub">{sig ? `Evoluciona en el nivel ${sig.desde}` : 'Forma final alcanzada'}</div>

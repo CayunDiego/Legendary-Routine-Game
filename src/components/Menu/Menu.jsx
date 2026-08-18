@@ -7,6 +7,7 @@ import TabMisiones from './TabMisiones.jsx';
 import TabProgreso from './TabProgreso.jsx';
 import TabPremios from './TabPremios.jsx';
 import TabCompa from './TabCompa.jsx';
+import TabPlacard from './TabPlacard.jsx';
 import TabAjustes from './TabAjustes.jsx';
 
 const TABS = [
@@ -14,6 +15,7 @@ const TABS = [
   ['progreso', 'Progreso'],
   ['premios', 'Premios'],
   ['compa', 'Compa'],
+  ['placard', 'Placard'],
   ['ajustes', 'Ajustes'],
 ];
 
@@ -51,6 +53,7 @@ export default function Menu() {
           {pestana === 'progreso' && <TabProgreso />}
           {pestana === 'premios' && <TabPremios />}
           {pestana === 'compa' && <TabCompa />}
+          {pestana === 'placard' && <TabPlacard />}
           {pestana === 'ajustes' && <TabAjustes />}
         </div>
       </div>

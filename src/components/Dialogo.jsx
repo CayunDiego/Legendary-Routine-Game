@@ -1,4 +1,5 @@
 import { useDialogo } from '../hooks/useDialogo.js';
+import { retratoBicho } from '../engine/retratosCompanero.js';
 
 /* Reemplaza a siguienteDialogo() + terminarTexto(), que escribían el texto en
    #dlgTexto y construían los botones de opción con document.createElement. */
@@ -19,6 +20,10 @@ export default function Dialogo() {
       className={clases}
       onClick={() => { if (!opciones) avanzar(); }}
     >
+      {actual && typeof actual.retrato === 'number' && retratoBicho(actual.retrato) && (
+        <img className="dlgRetrato" src={retratoBicho(actual.retrato)} alt="" />
+      )}
+
       <div id="dlgTexto">{texto}</div>
 
       <div id="dlgPremio" style={{ display: actual && actual.premio ? 'block' : 'none' }}>

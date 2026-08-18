@@ -3,6 +3,7 @@ import { MISIONES } from '../config/misiones.js';
 import { PREMIOS } from '../config/premios.js';
 import { CARTAS } from '../config/cartas.js';
 import { COMPANERO } from '../config/companero.js';
+import { DISFRACES, PASOS_POR_HALLAZGO } from '../config/disfraces.js';
 import { crearStore } from './store.js';
 import { xpNecesaria } from './niveles.js';
 import * as disco from './persistencia.js';
@@ -40,8 +41,18 @@ const EST_INICIAL = () => ({
   cartaVista: false,
   cartaIdx: -1,
   eclosionado: false,
+  // Date.now() del momento en que nació la mascota. Lo usa el motor para
+  // saber cuánto le queda a la cáscara rota en el jardín (HUEVO_DURA_MS).
+  // En 0 la cáscara ya no se muestra: es lo que pasa con una partida que
+  // eclosionó antes de que existiera este campo, y está bien — nació hace
+  // rato.
+  eclosionadoEn: 0,
   bichoNombre: null,
-  canjeados: [],          // [{cid, id, fecha}]
+  disfraces: [],          // ids de config/disfraces.js ya encontrados
+  disfrazPuesto: null,    // el que tiene puesto ahora, o null
+  // [{cid, id, fecha, cumplidoEn}] — cumplidoEn es el día en que Kath marcó
+  // que Diego se lo cumplió de verdad. Vacío = todavía lo está esperando.
+  canjeados: [],
   sonido: true,
   primeraVez: true,
   // Última versión del juego que Kath ya vio. Vacía en una partida que ya
@@ -289,7 +300,51 @@ function canjear(id) {
   // El cid identifica este canje en particular. Sin él, dos dispositivos que
   // canjean el mismo premio el mismo día se fusionan en uno solo y Kath
   // pierde un cupón.
-  EST.canjeados.unshift({ cid: disco.uuid(), id, fecha: diaDeJuego() });
+  EST.canjeados.unshift({ cid: disco.uuid(), id, fecha: diaDeJuego(), cumplidoEn: null });
+  guardar();
+  return true;
+}
+
+/* El segundo tilde: Kath marca que Diego ya le cumplió el premio de verdad.
+   Canjearlo sólo saca las monedas — de este lado no hay forma de saber si el
+   abrazo o la salida pasaron, y sin esto un cupón viejo se ve igual que uno
+   que sigue esperando.
+   Se guarda el día y no un booleano porque el día ya se muestra en la lista,
+   y porque deja ver cuánto tardó en cumplirse.
+
+   Recibe el canje en sí y no su `cid` porque no todos tienen: la fusión
+   arrastra los viejos de antes del cid tal cual (ver fusion.js), y buscarlos
+   por un cid vacío marcaría el primero de la lista que tampoco tenga, o sea
+   un cupón cualquiera. */
+function confirmarCanje(canje) {
+  if (!canje || canje.cumplidoEn) return false;
+  if (!EST.canjeados.includes(canje)) return false;
+  canje.cumplidoEn = diaDeJuego();
+  guardar();
+  return true;
+}
+
+/* --- disfraces ------------------------------------------------------------ */
+/* Sortea un hallazgo entre lo que TODAVÍA no encontró. Se sortea sobre los que
+   faltan y no sobre la lista entera para que el último accesorio no se vuelva
+   cada vez más improbable: encontrar el tercero cuesta lo mismo que el
+   primero. Devuelve el disfraz encontrado, o null si esta vez no hubo nada. */
+function buscarDisfrazEnCesped() {
+  const faltan = DISFRACES.filter((d) => !EST.disfraces.includes(d.id));
+  if (!faltan.length) return null;
+  if (Math.random() >= 1 / PASOS_POR_HALLAZGO) return null;
+  const d = faltan[Math.floor(Math.random() * faltan.length)];
+  EST.disfraces.push(d.id);
+  guardar();
+  return d;
+}
+
+/* null saca lo que tenga puesto. Sólo deja ponerse algo ya encontrado: si no,
+   una partida vieja fusionada podría dejar puesto un accesorio que Kath
+   todavía no juntó. */
+function ponerDisfraz(id) {
+  if (id !== null && !EST.disfraces.includes(id)) return false;
+  EST.disfrazPuesto = id;
   guardar();
   return true;
 }
@@ -323,7 +378,8 @@ export {
   misionPorId, hechoHoy, contarHechasHoy, progresoDelDia, completarMision,
   darXP,
   etapaBicho, puedeEclosionar, nombreBicho,
-  canjear,
+  canjear, confirmarCanje,
+  buscarDisfrazEnCesped, ponerDisfraz,
   DIAS_TIRA, ultimosDias,
 };
 export { xpNecesaria } from './niveles.js';

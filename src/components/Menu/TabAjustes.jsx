@@ -192,7 +192,10 @@ export default function TabAjustes() {
             className="inp"
             value={codigoNuevo}
             placeholder="ABCDE-FGHJK-MNPQR-STUVW"
-            onChange={(e) => setCodigoNuevo(e.target.value)}
+            onChange={(e) => {
+              const limpio = disco.normalizarCodigo(e.target.value).slice(0, disco.LARGO_CODIGO);
+              setCodigoNuevo(disco.formatearCodigo(limpio));
+            }}
           />
           <button
             className="btnPrim"

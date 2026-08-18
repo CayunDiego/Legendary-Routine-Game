@@ -69,6 +69,17 @@ function fusionarHistorial(a, b, extra) {
    que los distinga, así que se agrupan por premio+fecha y se toma la cantidad
    mayor de los dos lados: canjear dos abrazos el mismo día es legítimo y no se
    puede confundir con un duplicado de sincronización. */
+
+/* Dos copias del mismo canje (mismo cid). Lo único que puede diferir es el
+   segundo tilde, así que si cualquiera de los dos lados lo tiene marcado el
+   canje queda cumplido: desmarcarlo sería decirle a Kath que el premio que ya
+   recibió sigue pendiente. Ante dos fechas gana la más temprana, que es
+   cuando pasó de verdad. */
+function unirCanje(x, y) {
+  const fechas = [x.cumplidoEn, y.cumplidoEn].filter(Boolean).sort();
+  return { ...x, ...y, cumplidoEn: fechas[0] || null };
+}
+
 function fusionarCanjeados(a, b) {
   const conCid = new Map();
   const sinCid = new Map();
@@ -76,7 +87,11 @@ function fusionarCanjeados(a, b) {
   const clasificar = (lista, bolsaSinCid) => {
     for (const c of lista || []) {
       if (!c || !c.id) continue;
-      if (c.cid) { conCid.set(c.cid, c); continue; }
+      if (c.cid) {
+        const previo = conCid.get(c.cid);
+        conCid.set(c.cid, previo ? unirCanje(previo, c) : c);
+        continue;
+      }
       const k = c.id + '|' + (c.fecha || '');
       if (!bolsaSinCid.has(k)) bolsaSinCid.set(k, []);
       bolsaSinCid.get(k).push(c);
@@ -124,7 +139,18 @@ function fusionar(a, b) {
   out.mejorRacha = maxNum(a.mejorRacha, b.mejorRacha);
   out.racha = maxNum(a.racha, b.racha);
   out.eclosionado = !!(a.eclosionado || b.eclosionado);
+  // Nació una sola vez: vale el momento más temprano que conozca cualquiera de
+  // los dos. Tomar el más nuevo le regalaría vida extra a la cáscara del
+  // jardín cada vez que sincroniza.
+  const nacimientos = [a.eclosionadoEn, b.eclosionadoEn].map(Number).filter((n) => n > 0);
+  out.eclosionadoEn = nacimientos.length ? Math.min(...nacimientos) : 0;
   out.primeraVez = !!(a.primeraVez && b.primeraVez);
+  // Los disfraces encontrados se suman: lo que apareció en el césped de un
+  // dispositivo ya es parte de la colección, y no hay forma de "desencontrar".
+  out.disfraces = [...new Set([...(a.disfraces || []), ...(b.disfraces || [])])];
+  // El que tiene puesto lo decide el último en escribir (viene en `out`), pero
+  // no puede quedar puesto algo que no está en la colección fusionada.
+  if (out.disfrazPuesto && !out.disfraces.includes(out.disfrazPuesto)) out.disfrazPuesto = null;
 
   // --- el día ---------------------------------------------------------------
   const diaA = a.dia || '', diaB = b.dia || '';

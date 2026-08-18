@@ -310,7 +310,7 @@ export {
   salud, esPartida, huella,
   uuid, idDispositivo,
   getCodigo, setCodigo, asegurarCodigo, generarCodigo,
-  formatearCodigo, normalizarCodigo, codigoValido,
+  formatearCodigo, normalizarCodigo, codigoValido, LARGO_CODIGO,
   pedirPermanencia, esPermanente,
 };
 export const suscribir = store.suscribir;

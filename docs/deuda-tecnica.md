@@ -174,6 +174,49 @@ derivado y original nunca se distingan sólo por mayúsculas.
 
 ---
 
+## 4f. Las hojas del huevo y el compañero pesan varios MB y sus cuadros están medidos a mano
+
+**Severidad: baja.** Mismo patrón que 4e, con dos assets nuevos.
+
+| Original | Peso | Se usa |
+|---|---|---|
+| `src/assets/huevo_mascota.png` (1672 x 941) | 1,46 MB | 10 cuadros de 70 |
+| `src/assets/companero.png` (1536 x 1024) | 1,81 MB | los 48 cuadros |
+
+Ambas se versionaron tal cual salieron del generador: sin recortar ni
+optimizar, y el service worker las precachea enteras. En `companero.png` sí
+se usan todos los cuadros, pero la hoja además trae los rótulos ("ETAPA 1",
+"DERECHA", los números) quemados en la imagen: son píxeles que viajan al
+dispositivo de Kath en cada instalación y no se dibujan nunca.
+
+Los rectángulos de cada cuadro (`HUEVO_IDLE_X` / `HUEVO_HATCH_X` y
+`COMPANERO_ANIM` en `engine/motor.js`, más `RECORTES` en
+`engine/retratosCompanero.js`) salieron de medir el canal alfa con un script
+de Python de una sola vez, que no quedó en el repo. Si el día de mañana llega
+una hoja nueva o hay que retocar los cortes, hay que rehacer ese análisis
+desde cero: no hay grilla uniforme (cada cuadro tiene su propio ancho)
+porque las hojas vienen empaquetadas, no en grilla — a diferencia de las de
+Kath o Merlí.
+
+**Y los rótulos de las hojas mienten.** Van dos de dos: en `merli.png` los
+laterales estaban cruzados, y en `companero.png` la etapa 3 tiene la fila
+"DERECHA" mirando a la izquierda y viceversa — las etapas 1 y 2 de la misma
+hoja están bien, así que no alcanza con revisar una fila y confiar en el
+resto. La regla es mapear por el dibujo, nunca por el texto, y comprobar cada
+etapa por separado.
+
+Ya pasó una vez: la primera `companero.png` traía caminata sólo de costado y
+retratos grandes aparte, y la segunda los cambió por las cuatro direcciones
+sin retratos. Los 48 rectángulos hubo que volver a medirlos enteros, y
+`retratosCompanero.js` pasó a recortar el cuadro de frente de la caminata
+porque los retratos dejaron de existir.
+
+**Arreglo:** recortar cada hoja a los cuadros que realmente se usan (y sacar
+los rótulos) y comprimir el PNG resultante. De paso, guardar el script de
+medición en `scripts/` en vez de tirarlo — cada hoja nueva lo necesita.
+
+---
+
 ## 5. No hay verificación real de navegador
 
 **Severidad: media.**

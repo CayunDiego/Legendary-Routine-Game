@@ -44,7 +44,11 @@ const TODOS_LOS_OBJETOS = [
   { x:7,  y:3,  art:'biblioteca',solido:true },
   { x:8,  y:3,  art:'escritorio',accion:'animo' },
   { x:9,  y:3,  art:'notebook',  accion:'progreso' },
-  { x:11, y:3,  art:'planta',    solido:true },
+  // El placard va contra la pared de la derecha y NO debajo del cuadro: el
+  // cuadro está colgado en (10,2) y se lee parándose en (10,3), así que un
+  // mueble ahí dejaba la carta inalcanzable.
+  { x:11, y:3,  art:'placard',   accion:'placard' },
+  { x:11, y:6,  art:'planta',    solido:true },
   { x:5,  y:4,  art:'alfombraGrande', decor:true },
 
   // --- Baño ---
