@@ -139,38 +139,29 @@ que este juego necesita.
 
 ---
 
-## 4e. Las hojas de sprites son derivados que no se pueden rehacer
+## 4e. Cambiar una hoja de sprites todavía pide dos datos a mano
 
-**Severidad: baja** (pero ya causó una pérdida real, ver abajo).
+**Severidad: baja.** (Antes esta entrada decía que las hojas eran derivados que
+no se podían rehacer; eso se resolvió, ver abajo en Resuelto.)
 
-Dos personajes tienen el mismo patrón: un original grande que salió del
-generador y una hoja chica derivada, que es la que usa el juego.
+`npm run sprites` mide las hojas solo, pero quedan dos cosas que hay que
+escribir en `scripts/sprites.json` mirando la imagen de revisión:
 
-| Original (material de trabajo) | Derivado (lo que importa el juego) |
-|---|---|
-| `Kath_baile_1.png` — 1792 x 2390, 5,4 MB, fondo gris, 1529 colores. Ya no está en el árbol: se borró, pero sigue recuperable del commit `0a66a56` | `src/assets/kath_baile.png` — 96 x 128, 5,4 kB |
-| `src/assets/merli.png` — 2816 x 1536, 7,1 MB, fondo a cuadros, 9 filas | `src/assets/merli_hoja.png` — 570 x 168, 59 kB |
+- **Cómo se llama cada fila** (`orden`): para qué lado mira el bicho de esa
+  fila. No es automatizable con lo que hay: los rótulos de la hoja del compañero
+  están cruzados, así que ni siquiera leyéndolos se acierta. Sería automatizable
+  comparando cada fila contra la hoja anterior (misma pose, misma silueta), que
+  es la idea si esto llega a molestar de verdad.
+- **Los cortes de una fila donde los cuadros se pisan** (`cortes`): hoy sólo la
+  eclosión del huevo, donde las esquirlas de un cuadro caen sobre el de al lado
+  y no queda ningún hueco donde cortar. Los números se leen de la regla que
+  dibuja la imagen de revisión.
 
-Tres cosas quedaron flojas:
-
-- Los scripts que hicieron esas conversiones fueron de una sola vez y no están
-  en el repo. Si mañana llega otra hoja hay que volver a escribirlos, y no es
-  trivial: cada una necesitó detectar bandas de filas y columnas, separar el
-  fondo del antialiasing, normalizar los cuadros a una celda común y elegir el
-  método de reducción (promedio de área, no color dominante).
-- El original de Merlí (7,1 MB) vive en `src/assets/` sin que nadie lo importe.
-  No entra a la build (Rollup sólo emite lo importado, se verificó), pero pesa
-  en el repo y confunde: parece un asset del juego y es material de trabajo. Se
-  decidió versionarlo igual, a cambio de no volver a perderlo.
-- **Ya se perdió un original por esto.** El primer `Merli.png` se pisó al
-  copiar el derivado como `merli.png`: NTFS no distingue mayúsculas, así que
-  para el sistema de archivos eran el mismo archivo. Por eso ahora el derivado
-  se llama `merli_hoja.png` y no una variante de mayúsculas del original.
-
-**Arreglo:** un `scripts/hoja-sprites.mjs` que haga la conversión, y mover los
-originales a una carpeta fuera de `src/` (`arte-fuente/`, por ejemplo), que deje
-claro qué es material de trabajo. Mientras tanto, la regla mínima es que
-derivado y original nunca se distingan sólo por mayúsculas.
+Además, `merli_hoja.png` es la única hoja que **no** se regenera hoy: su cruda
+está archivada como `arte-fuente/merli-crudo.png` a propósito. Rehacerla sale
+bien (se probó), pero el gato queda un toque más grande que el que está
+publicado, y ese cambio visual no tiene por qué viajar de garrón en el próximo
+cambio de sprite. Para rehacerla: renombrarla a `merli.png` y correr el script.
 
 ---
 
@@ -188,6 +179,46 @@ Todo lo visual se verificó a mano hasta ahora. Eso no escala: los dos bugs de l
 
 ## Resuelto
 
+- **Cambiar un sprite obligaba a medir a mano y a tocar el código**
+  (2026-08-18). Cada hoja nueva del generador se medía a ojo, y las coordenadas
+  de los 48 cuadros del compañero (más las 20 del huevo) se pegaban a mano en
+  `engine/motor.js` y `engine/retratosCompanero.js`. Era el paso más caro y más
+  frágil de todo el proyecto: un número mal copiado se ve recién en pantalla, y
+  medir de nuevo cuesta una sesión entera.
+
+  Ahora hay un preprocesador, `scripts/sprites.py` (`npm run sprites`), que
+  **mide solo**: saca el fondo (gris plano o damero) mirando el marco de la
+  imagen, parte la hoja en filas por densidad de píxeles, encuentra los cuadros
+  de cada fila con componentes conectados (union-find sobre los tramos de cada
+  fila), descarta los rótulos quemados en la imagen por forma — un cartel llena
+  el 95% de su caja y no tiene color; un bicho llena el 65% y tiene saturación
+  0.3 — y le suma a cada cuadro las esquirlas que le salieron. Después empaqueta
+  y escribe `src/config/recortes.json`, que es de donde el juego lee las
+  coordenadas: cambiar un sprite ya no toca código.
+
+  Lo que queda a mano está anotado arriba, en 4e. La verificación es una imagen
+  por hoja en `arte-fuente/_revision/`, con cada cuadro marcado, numerado y con
+  el nombre de su fila, y una regla de coordenadas arriba. Si la cuenta de filas
+  no cierra contra el manifiesto, el script corta con un error y **no** pisa la
+  hoja del juego, pero deja igual la revisión para poder mirarla.
+
+  Verificado contra lo que ya estaba publicado: los 48 cuadros del compañero
+  salen en el mismo orden etapa/dirección/cuadro que las coordenadas viejas
+  (silueta comparada uno a uno, diferencia máxima 14%, que es el recorte más
+  ajustado); las hojas de Diego y del baile salen píxel por píxel idénticas a
+  las comiteadas; el huevo, con los mismos anchos de cuadro que las coordenadas
+  medidas a mano (127 contra 126, 189 contra 189, 210 contra 209...).
+  `npm run test` verde y `npm run build` sin cambios de peso.
+
+  De paso se cerró lo otro que estaba anotado en 4e: `merli.png` (7,1 MB, el
+  original de Merlí) salió de `src/assets/` — donde parecía un asset del juego —
+  y quedó en `arte-fuente/`, y el sprite de Kath dejó de vivir en base64 dentro
+  de `config/sprites.js` para ser un archivo más (`src/assets/kath_hoja.png`),
+  que es lo que permite cambiarlo sin tocar código. `scripts/recortar-hojas.py`,
+  que tenía las coordenadas escritas adentro y sólo recortaba, se borró: lo
+  reemplaza el preprocesador. La guía para Kath y para Diego está en
+  [`docs/sprites.md`](sprites.md).
+
 - **Las hojas del huevo y el compañero pesaban varios MB sin recortar**
   (2026-08-18). `huevo_mascota.png` (1,46 MB) y `companero.png` (1,04 MB)
   eran las hojas crudas del generador: traían filas sin usar y, la del
@@ -195,7 +226,8 @@ Todo lo visual se verificó a mano hasta ahora. Eso no escala: los dos bugs de l
   imagen — píxeles que el service worker precacheaba en cada instalación sin
   dibujarse nunca.
 
-  `scripts/recortar-hojas.py` (nuevo, con Pillow) recorta sólo los cuadros
+  `scripts/recortar-hojas.py` (nuevo, con Pillow; después reemplazado por
+  `scripts/sprites.py`, ver la entrada de arriba) recorta sólo los cuadros
   que `COMPANERO_ANIM` / `HUEVO_IDLE_X` / `HUEVO_HATCH_X` usan hoy — esas
   coordenadas ya estaban verificadas al píxel, así que el script no midió de
   nuevo, sólo recortó y empaquetó — y arma dos hojas nuevas y compactas

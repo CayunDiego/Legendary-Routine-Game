@@ -5,3 +5,10 @@ dist/
 
 # Estado y cache local de wrangler (Cloudflare). Se regenera solo.
 .wrangler/
+
+# Salidas de scripts/sprites.py que son para mirar, no para guardar: la imagen
+# de revisión de cada hoja y las plantillas de referencia. Se regeneran con
+# `npm run sprites`.
+arte-fuente/_revision/
+arte-fuente/_plantillas/
+scripts/__pycache__/

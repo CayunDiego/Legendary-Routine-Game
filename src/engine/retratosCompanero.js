@@ -1,4 +1,5 @@
 import { SPRITE_COMPANERO } from '../config/sprites.js';
+import { COMPANERO_RETRATOS } from '../config/recortes.js';
 
 /* Retrato del compañero (uno por COMPANERO.etapas), para el diálogo de
    evolución en game/juego.js. Es el primer cuadro de la caminata "hacia
@@ -10,13 +11,10 @@ import { SPRITE_COMPANERO } from '../config/sprites.js';
    Vive en un módulo aparte del motor porque esto lo consume un componente de
    React, no el canvas: carga su propia copia de la imagen (el navegador la
    sirve de caché, no pesa una segunda vez) en vez de depender de que el motor
-   ya haya arrancado. Los rectángulos son los mismos que COMPANERO_ANIM en
-   engine/motor.js, fila `abajo`, primer cuadro. */
-const RECORTES = [
-  { x: 0, y: 0, w: 75, h: 109 },     // etapa 0 Kathi
-  { x: 0, y: 387, w: 73, h: 137 },   // etapa 1 Kathira
-  { x: 0, y: 906, w: 115, h: 166 },  // etapa 2 Kathrix
-];
+   ya haya arrancado. Los rectángulos los arma config/recortes.js a partir de
+   COMPANERO_ANIM (fila `abajo`, primer cuadro), así que no hay que volver a
+   escribirlos cuando cambia la hoja. */
+const RECORTES = COMPANERO_RETRATOS;
 
 let hoja = null;
 const cache = [];

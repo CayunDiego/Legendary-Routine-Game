@@ -1,6 +1,7 @@
 import { MAPA, SOLIDOS, OBJETOS, INICIO } from '../config/mapa.js';
 import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO, SPRITE_MERLI, SPRITE_HUEVO, SPRITE_COMPANERO } from '../config/sprites.js';
 import { FLAGS } from '../config/flags.js';
+import { KATH, MERLI, COMPANERO_ANIM, HUEVO_IDLE, HUEVO_HATCH } from '../config/recortes.js';
 import { dentroDeZonaMerli } from '../config/merli.js';
 /* niveles.js no importa nada, así que traerlo acá no arma el ciclo que sí
    armaría pedirle xpNecesaria() a gameLogic.js (ver el comentario de allá). */
@@ -55,7 +56,7 @@ let hojaDiego = null;               // sprite sheet de Diego (mismo formato)
 let hojaMerli = null;               // hoja de Merlí (ver config/sprites.js)
 let hojaHuevo = null;                // hoja del huevo (ver config/sprites.js)
 let hojaCompanero = null;            // hoja del compañero (ver config/sprites.js)
-const FRAME_W = 24, FRAME_H = 32;   // tamaño de cada frame del sheet
+const FRAME_W = KATH.w, FRAME_H = KATH.h;   // tamaño de cada frame del sheet (config/recortes.js)
 const PIES = 30;                    // y donde terminan los pies dentro del frame
 const ESC_JUG = 3;                  // escala del sprite (3 = mismo tamaño de píxel que el escenario)
 
@@ -178,33 +179,10 @@ const bicho = { px: 0, py: 0, dir: 0, visible: false, cola: [], tAnim: 0 };
    ajustado, que sí variaba hasta 16 px).
    Como el arte trae las cuatro direcciones dibujadas de verdad, acá no se
    espeja nada: la fila es `dir` directo, igual que con Merlí. */
-/* Coordenadas de una hoja empaquetada aparte (companero_hoja.png, generada
-   por scripts/recortar-hojas.py), no de la hoja cruda del generador: esa
-   traía filas sin usar y rótulos ("ETAPA 1", "DERECHA"...) quemados en la
-   imagen que no se dibujan nunca. La cruda se guardó en arte-fuente/ por si
-   hace falta volver a recortar (ver docs/deuda-tecnica.md 4f). El mapeo por
-   dibujo-no-texto de la etapa 3 (ver git blame) ya no aplica: el script
-   empaquetó cada fila ya en el orden correcto (abajo/izq/der/arriba). */
-const COMPANERO_ANIM = [
-  [ // etapa 1 — Kathi
-    { y: 0, w: 75, h: 109, x: [0, 77, 154, 231] },     // abajo
-    { y: 111, w: 89, h: 74, x: [0, 91, 182, 273] },    // izquierda
-    { y: 187, w: 87, h: 72, x: [0, 89, 178, 267] },    // derecha
-    { y: 261, w: 73, h: 124, x: [0, 75, 150, 225] },   // arriba
-  ],
-  [ // etapa 2 — Kathira
-    { y: 387, w: 73, h: 137, x: [0, 75, 150, 225] },   // abajo
-    { y: 526, w: 85, h: 119, x: [0, 87, 174, 261] },   // izquierda
-    { y: 647, w: 85, h: 121, x: [0, 87, 174, 261] },   // derecha
-    { y: 770, w: 81, h: 134, x: [0, 83, 166, 249] },   // arriba
-  ],
-  [ // etapa 3 — Kathrix
-    { y: 906, w: 115, h: 166, x: [0, 117, 234, 351] },   // abajo
-    { y: 1074, w: 117, h: 157, x: [0, 119, 238, 357] },  // izquierda
-    { y: 1233, w: 118, h: 150, x: [0, 120, 240, 360] },  // derecha
-    { y: 1385, w: 112, h: 194, x: [0, 114, 228, 342] },  // arriba
-  ],
-];
+/* Las coordenadas de cada cuadro salen de config/recortes.js, que las lee del
+   archivo que genera scripts/sprites.py al medir la hoja cruda de
+   arte-fuente/. Antes vivían acá escritas a mano, y cambiar la hoja obligaba a
+   medirlas de nuevo a ojo y pegarlas una por una (ver docs/sprites.md). */
 const BICHO_ANIM_MS = 130;    // cuánto dura cada cuadro de la caminata
 const BICHO_QUIETO_EPS = 0.4; // px de distancia al destino por debajo de la cual se considera quieto
 
@@ -254,11 +232,11 @@ const MERLI_MOV_MS = 260;                 // paso más lento y relajado que el d
 const MERLI_ESPERA = [500, 2200];         // rango de pausa entre decisiones (ms)
 const MERLI_QUIETO_PROB = 0.35;           // a veces la decisión es "quedarse un rato más"
 
-/* Celda de la hoja (ver config/sprites.js): 10 cuadros de caminata x 4
+/* Celda de la hoja (ver config/recortes.js): 10 cuadros de caminata x 4
    direcciones, en el mismo orden que DIRS (0 abajo, 1 izq, 2 der, 3 arriba).
    Se dibuja 1:1, sin reescalar, que es lo que la deja nítida. */
-const MERLI_FRAME_W = 57, MERLI_FRAME_H = 42;
-const MERLI_CUADROS = 10;
+const MERLI_FRAME_W = MERLI.w, MERLI_FRAME_H = MERLI.h;
+const MERLI_CUADROS = MERLI.cuadros;
 const MERLI_CUADRO_MS = 70;               // el ciclo entero dura 700 ms
 
 const merli = {
@@ -268,35 +246,9 @@ const merli = {
   espera: 800,
 };
 
-/* Huevo: hoja empaquetada, no en grilla uniforme (ver comentario en
-   config/sprites.js), así que cada cuadro es un rectángulo propio en vez de
-   fila*ancho + columna*alto como en las hojas de arriba. Coordenadas
-   sacadas midiendo el alfa de huevo_mascota.png. */
-/* Coordenadas de huevo_hoja.png, empaquetada aparte por
-   scripts/recortar-hojas.py a partir de la hoja cruda del generador (10
-   filas, de las que sólo se usan idle y hatch — ver arte-fuente/ y
-   docs/deuda-tecnica.md 4f). Las filas 1 y 2 de la cruda (variantes de
-   sacudida y cáscara ya rota) quedaron afuera por no usarse hoy; siguen
-   disponibles ahí si hace falta más variedad después. */
-const HUEVO_Y = { idle: 0, hatch: 182 };
-const HUEVO_H = { idle: 180, hatch: 181 };
-const HUEVO_IDLE_X = [
-  [0, 138], [140, 276], [278, 415], [417, 555], [557, 695],
-  [697, 839], [841, 979], [981, 1121], [1123, 1256], [1258, 1391],
-];
-const HUEVO_IDLE = HUEVO_IDLE_X.map(([x0, x1]) =>
-  ({ x: x0, y: HUEVO_Y.idle, w: x1 - x0, h: HUEVO_H.idle }));
-
-/* Secuencia completa de eclosión: entero -> grieta -> yema asomando ->
-   estalla -> cáscara rota. El último cuadro queda fijo para siempre como
-   decoración del huevo ya nacido. */
-const HUEVO_HATCH_X = [
-  [0, 126], [128, 252], [254, 381], [383, 512], [514, 643],
-  [645, 834], [836, 1045], [1047, 1165], [1167, 1362], [1364, 1550],
-];
-const HUEVO_HATCH = HUEVO_HATCH_X.map(([x0, x1]) =>
-  ({ x: x0, y: HUEVO_Y.hatch, w: x1 - x0, h: HUEVO_H.hatch }));
-
+/* Huevo: dos tiras de 10 cuadros (el bamboleo y la eclosión), cada cuadro con
+   su propio rectángulo porque la hoja no está en grilla. Salen medidas de
+   config/recortes.js, igual que las del compañero. */
 const HUEVO_IDLE_MS = 150;   // cuánto dura cada cuadro del bamboleo
 const HUEVO_HATCH_MS = 150;  // cuánto dura cada cuadro de la eclosión
 

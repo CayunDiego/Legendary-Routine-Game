@@ -1,0 +1,120 @@
+{
+  "_ayuda": [
+    "Manifiesto de scripts/sprites.py: lo unico que hay que editar a mano cuando",
+    "llega una hoja de sprites nueva. Guia larga y en criollo: docs/sprites.md.",
+    "",
+    "  fuente   nombre del archivo dentro de arte-fuente/ (la hoja como llego).",
+    "           Si no esta, ese personaje se saltea y se deja como estaba.",
+    "  salida   nombre de la hoja empaquetada que se genera en src/assets/.",
+    "  coords   con que nombre quedan las coordenadas en src/config/recortes.json.",
+    "  modo     grilla  = celdas todas iguales, el motor las cuenta (Kath, Merli).",
+    "           bloques = cada cuadro con su tamano, y varios bloques al lado",
+    "                     (el companero: una columna de bloques por etapa).",
+    "           tiras   = cada cuadro con su tamano, filas con nombre (el huevo).",
+    "  orden    como se llama cada fila, DE ARRIBA HACIA ABAJO tal como se ven en",
+    "           la hoja cruda. Es lo unico que el script no puede adivinar. En",
+    "           modo bloques va una entrada por bloque; null = fila que no se usa.",
+    "  fondo    'auto' saca el fondo mirando el marco de la imagen (damero gris,",
+    "           gris plano). Si la hoja ya viene transparente, no hace nada.",
+    "  cortes   salida de emergencia para una fila donde los cuadros se pisan y no",
+    "           queda hueco donde cortar: las columnas del corte, leidas de la",
+    "           regla que dibuja la imagen de revision. La clave es el numero de",
+    "           fila, contando desde 0 de arriba hacia abajo.",
+    "  colores / dither  paleta de la hoja final. Sin 'colores' no se cuantiza; el",
+    "           dither ayuda a los degrades y arruina el pixel art de colores planos.",
+    "  ruido / hueco / minimo_cuadro / minima_banda / tolerancia  perillas de la",
+    "           medicion; tocarlas solo si la imagen de revision muestra cuadros",
+    "           mal cortados.",
+    "  bandas_usadas  (solo grilla) que filas de la hoja cruda usar y en que orden,",
+    "           cuando la hoja trae mas poses de las que el juego dibuja.",
+    "  nota     texto libre para acordarse de algo. El script lo ignora."
+  ],
+
+  "companero": {
+    "fuente": "companero.png",
+    "salida": "companero_hoja.png",
+    "coords": "companero",
+    "modo": "bloques",
+    "bloques": 3,
+    "cuadros": 4,
+    "colores": 64,
+    "fondo": "auto",
+    "orden": [
+      ["derecha", "derecha", "izquierda"],
+      ["izquierda", "izquierda", "derecha"],
+      ["arriba", "arriba", "arriba"],
+      ["abajo", "abajo", "abajo"]
+    ],
+    "nota": "Las tres etapas van una al lado de la otra, y la 3 vino con izquierda y derecha al reves que las otras dos: por eso cada fila lleva tres nombres."
+  },
+
+  "huevo": {
+    "fuente": "huevo_mascota.png",
+    "salida": "huevo_hoja.png",
+    "coords": "huevo",
+    "modo": "tiras",
+    "cuadros": 10,
+    "colores": 64,
+    "fondo": "auto",
+    "orden": ["idle", null, null, "hatch"],
+    "cortes": {
+      "3": [150, 284, 425, 575, 723, 920, 1136, 1270, 1473]
+    },
+    "nota": "La hoja trae cuatro tiras y el juego dibuja dos. La de la eclosion necesita cortes a mano porque las esquirlas de un cuadro caen encima del de al lado."
+  },
+
+  "kath": {
+    "fuente": "kath.png",
+    "salida": "kath_hoja.png",
+    "coords": "kath",
+    "modo": "grilla",
+    "columnas": 4,
+    "filas": 4,
+    "celda": [24, 32],
+    "fondo": "auto",
+    "orden": ["abajo", "izquierda", "derecha", "arriba"],
+    "nota": "Los disfraces se dibujan encima contando desde la celda de 24 x 32, asi que ese tamano no se cambia sin tocar engine/disfraces.js."
+  },
+
+  "baile": {
+    "fuente": "kath_baile.png",
+    "salida": "kath_baile.png",
+    "coords": "baile",
+    "modo": "grilla",
+    "columnas": 4,
+    "filas": 4,
+    "celda": [24, 32],
+    "fondo": "auto",
+    "orden": ["abajo", "izquierda", "derecha", "arriba"]
+  },
+
+  "merli": {
+    "fuente": "merli.png",
+    "salida": "merli_hoja.png",
+    "coords": "merli",
+    "modo": "grilla",
+    "columnas": 10,
+    "filas": 4,
+    "celda": [57, 42],
+    "colores": 64,
+    "dither": false,
+    "fondo": "auto",
+    "tolerancia": 60,
+    "ruido": 0.02,
+    "bandas_usadas": [8, 7, 5, 6],
+    "orden": ["abajo", "izquierda", "derecha", "arriba"],
+    "nota": "La hoja cruda esta archivada como merli-crudo.png (9 poses, damero gris y rotulos al costado). El juego usa la hoja ya armada de src/assets/. Para rehacerla, renombrar la cruda a merli.png y correr el script: sale igual pero con el gato un toque mas grande, porque cada cuadro pasa a ocupar toda su celda."
+  },
+
+  "diego": {
+    "fuente": "diego.png",
+    "salida": "diego.png",
+    "coords": "diego",
+    "modo": "grilla",
+    "columnas": 4,
+    "filas": 4,
+    "celda": [24, 32],
+    "fondo": "auto",
+    "orden": ["abajo", "izquierda", "derecha", "arriba"]
+  }
+}
