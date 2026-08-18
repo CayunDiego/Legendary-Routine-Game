@@ -174,49 +174,6 @@ derivado y original nunca se distingan sólo por mayúsculas.
 
 ---
 
-## 4f. Las hojas del huevo y el compañero pesan varios MB y sus cuadros están medidos a mano
-
-**Severidad: baja.** Mismo patrón que 4e, con dos assets nuevos.
-
-| Original | Peso | Se usa |
-|---|---|---|
-| `src/assets/huevo_mascota.png` (1672 x 941) | 1,46 MB | 10 cuadros de 70 |
-| `src/assets/companero.png` (1536 x 1024) | 1,81 MB | los 48 cuadros |
-
-Ambas se versionaron tal cual salieron del generador: sin recortar ni
-optimizar, y el service worker las precachea enteras. En `companero.png` sí
-se usan todos los cuadros, pero la hoja además trae los rótulos ("ETAPA 1",
-"DERECHA", los números) quemados en la imagen: son píxeles que viajan al
-dispositivo de Kath en cada instalación y no se dibujan nunca.
-
-Los rectángulos de cada cuadro (`HUEVO_IDLE_X` / `HUEVO_HATCH_X` y
-`COMPANERO_ANIM` en `engine/motor.js`, más `RECORTES` en
-`engine/retratosCompanero.js`) salieron de medir el canal alfa con un script
-de Python de una sola vez, que no quedó en el repo. Si el día de mañana llega
-una hoja nueva o hay que retocar los cortes, hay que rehacer ese análisis
-desde cero: no hay grilla uniforme (cada cuadro tiene su propio ancho)
-porque las hojas vienen empaquetadas, no en grilla — a diferencia de las de
-Kath o Merlí.
-
-**Y los rótulos de las hojas mienten.** Van dos de dos: en `merli.png` los
-laterales estaban cruzados, y en `companero.png` la etapa 3 tiene la fila
-"DERECHA" mirando a la izquierda y viceversa — las etapas 1 y 2 de la misma
-hoja están bien, así que no alcanza con revisar una fila y confiar en el
-resto. La regla es mapear por el dibujo, nunca por el texto, y comprobar cada
-etapa por separado.
-
-Ya pasó una vez: la primera `companero.png` traía caminata sólo de costado y
-retratos grandes aparte, y la segunda los cambió por las cuatro direcciones
-sin retratos. Los 48 rectángulos hubo que volver a medirlos enteros, y
-`retratosCompanero.js` pasó a recortar el cuadro de frente de la caminata
-porque los retratos dejaron de existir.
-
-**Arreglo:** recortar cada hoja a los cuadros que realmente se usan (y sacar
-los rótulos) y comprimir el PNG resultante. De paso, guardar el script de
-medición en `scripts/` en vez de tirarlo — cada hoja nueva lo necesita.
-
----
-
 ## 5. No hay verificación real de navegador
 
 **Severidad: media.**
@@ -230,6 +187,38 @@ Todo lo visual se verificó a mano hasta ahora. Eso no escala: los dos bugs de l
 ---
 
 ## Resuelto
+
+- **Las hojas del huevo y el compañero pesaban varios MB sin recortar**
+  (2026-08-18). `huevo_mascota.png` (1,46 MB) y `companero.png` (1,04 MB)
+  eran las hojas crudas del generador: traían filas sin usar y, la del
+  compañero, los rótulos ("ETAPA 1", "DERECHA", los números) quemados en la
+  imagen — píxeles que el service worker precacheaba en cada instalación sin
+  dibujarse nunca.
+
+  `scripts/recortar-hojas.py` (nuevo, con Pillow) recorta sólo los cuadros
+  que `COMPANERO_ANIM` / `HUEVO_IDLE_X` / `HUEVO_HATCH_X` usan hoy — esas
+  coordenadas ya estaban verificadas al píxel, así que el script no midió de
+  nuevo, sólo recortó y empaquetó — y arma dos hojas nuevas y compactas
+  (`companero_hoja.png`, `huevo_hoja.png`) con la paleta cuantizada a 64
+  colores. El número se eligió mirando el brillo del cascarón del huevo (el
+  único degradé real de las dos hojas): a partir de 32 ya bandea un poco, a
+  16 las manchas rojas/azules pierden el color, a 64 sale idéntico al ojo.
+  Verificado además por código: los 48 cuadros del compañero tienen el canal
+  alfa (la silueta) byte a byte igual al original, así que ningún recorte se
+  corrió.
+
+  Resultado, medido con `npm run build`: lo que el service worker precachea
+  de estas dos hojas bajó de ~2,5 MB a 928 kB (companero_hoja 440 kB +
+  huevo_hoja 489 kB) — Kath instala y actualiza bastante menos peso.
+
+  Las hojas crudas (más las variantes de generación descartadas del
+  compañero, `companero1-4.png` / `companero_b.png` / `companero-c.png`) se
+  movieron a `arte-fuente/` en la raíz del repo, fuera de `src/`, siguiendo
+  la idea que ya estaba anotada en 4e: dejan claro que son material de
+  trabajo y no algo que la build use (Rollup no las toca porque nada las
+  importa), y quedan ahí por si hace falta volver a recortar. La fila 1 y 2
+  de `huevo_mascota.png` (variantes de sacudida y cáscara ya rota, sin usar
+  todavía) no se perdieron: siguen en esa copia cruda.
 
 - **Una partida ilegible se borraba sola** (2026-08-15). Era la peor: `cargar()`
   hacía `EST = EST_INICIAL()` dentro del `catch`, así que un JSON corrupto dejaba

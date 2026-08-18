@@ -13,9 +13,9 @@ import { SPRITE_COMPANERO } from '../config/sprites.js';
    ya haya arrancado. Los rectángulos son los mismos que COMPANERO_ANIM en
    engine/motor.js, fila `abajo`, primer cuadro. */
 const RECORTES = [
-  { x: 163, y: 771, w: 75, h: 109 },     // etapa 0 Kathi
-  { x: 596, y: 755, w: 73, h: 137 },     // etapa 1 Kathira
-  { x: 1025, y: 743, w: 115, h: 166 },   // etapa 2 Kathrix
+  { x: 0, y: 0, w: 75, h: 109 },     // etapa 0 Kathi
+  { x: 0, y: 387, w: 73, h: 137 },   // etapa 1 Kathira
+  { x: 0, y: 906, w: 115, h: 166 },  // etapa 2 Kathrix
 ];
 
 let hoja = null;

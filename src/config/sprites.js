@@ -33,27 +33,27 @@ import SPRITE_BAILE from '../assets/kath_baile.png';
 import SPRITE_MERLI from '../assets/merli_hoja.png';
 
 /* Huevo del compañero: hoja empaquetada (no en grilla uniforme — cada cuadro
-   viene recortado a su propio tamaño). Las filas que se usan hoy son:
-     - fila 0 (y 41-220): 10 cuadros, loop de bamboleo idle mientras espera.
-     - fila 3 (y 729-909): secuencia completa de eclosión, entero -> roto,
-       en orden. El último cuadro queda como cáscara rota fija para siempre.
-   Las filas 1 y 2 (variantes de sacudida y cáscara ya rota) no se usan
-   todavía; quedan en la hoja por si hace falta más variedad después.
-   Los rectángulos de cada cuadro están hardcodeados en motor.js (HUEVO_*)
-   porque no hay forma de derivarlos de un ancho/alto fijo. */
-import SPRITE_HUEVO from '../assets/huevo_mascota.png';
+   viene recortado a su propio tamaño), con sólo los cuadros que se usan:
+     - fila idle: 10 cuadros, loop de bamboleo mientras espera.
+     - fila hatch: secuencia completa de eclosión, entero -> roto, en orden.
+       El último cuadro queda como cáscara rota fija para siempre.
+   Es un derivado de arte-fuente/huevo_mascota.png (la hoja cruda del
+   generador, 1,46 MB con filas sin usar y sin recortar), armado con
+   scripts/recortar-hojas.py — ver docs/deuda-tecnica.md 4f. Los rectángulos
+   de cada cuadro están hardcodeados en motor.js (HUEVO_*) porque no hay
+   forma de derivarlos de un ancho/alto fijo. */
+import SPRITE_HUEVO from '../assets/huevo_hoja.png';
 
 /* Compañero (Kathi / Kathira / Kathrix): 3 etapas x 4 direcciones x 4 cuadros
    de caminata. Las cuatro direcciones están dibujadas de verdad, así que el
    motor no espeja nada.
-   Ojo con dos cosas de esta hoja:
-     - Los rótulos ("ETAPA 1", "DERECHA", los números) son parte de la imagen,
-       no una guía aparte. Los recortes están medidos para esquivarlos.
-     - No viene en grilla uniforme: cada cuadro tiene su propio recorte y los
-       tamaños cambian entre etapas. Los rectángulos están hardcodeados en
-       motor.js (COMPANERO_ANIM) y en engine/retratosCompanero.js, medidos
-       sobre el canal alfa igual que los del huevo. */
-import SPRITE_COMPANERO from '../assets/companero.png';
+   Es un derivado de arte-fuente/companero.png (la hoja cruda del generador,
+   1,04 MB con los rótulos "ETAPA 1", "DERECHA", los números quemados en la
+   imagen), armado con scripts/recortar-hojas.py — ver docs/deuda-tecnica.md
+   4f. No viene en grilla uniforme: cada cuadro tiene su propio recorte y los
+   tamaños cambian entre etapas. Los rectángulos están hardcodeados en
+   motor.js (COMPANERO_ANIM) y en engine/retratosCompanero.js. */
+import SPRITE_COMPANERO from '../assets/companero_hoja.png';
 
 /* Sprite de Kath: hoja de 4 columnas x 4 filas (abajo, izq, der, arriba),
    cuadros de 24 x 32 px. Para cambiarlo, reemplazá esta constante por otra

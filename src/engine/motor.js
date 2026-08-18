@@ -178,30 +178,31 @@ const bicho = { px: 0, py: 0, dir: 0, visible: false, cola: [], tAnim: 0 };
    ajustado, que sí variaba hasta 16 px).
    Como el arte trae las cuatro direcciones dibujadas de verdad, acá no se
    espeja nada: la fila es `dir` directo, igual que con Merlí. */
+/* Coordenadas de una hoja empaquetada aparte (companero_hoja.png, generada
+   por scripts/recortar-hojas.py), no de la hoja cruda del generador: esa
+   traía filas sin usar y rótulos ("ETAPA 1", "DERECHA"...) quemados en la
+   imagen que no se dibujan nunca. La cruda se guardó en arte-fuente/ por si
+   hace falta volver a recortar (ver docs/deuda-tecnica.md 4f). El mapeo por
+   dibujo-no-texto de la etapa 3 (ver git blame) ya no aplica: el script
+   empaquetó cada fila ya en el orden correcto (abajo/izq/der/arriba). */
 const COMPANERO_ANIM = [
   [ // etapa 1 — Kathi
-    { y: 771, w: 75, h: 109, x: [163, 268, 370, 476] },   // abajo
-    { y: 388, w: 89, h: 74, x: [158, 266, 372, 475] },    // izquierda
-    { y: 205, w: 87, h: 72, x: [161, 265, 365, 470] },    // derecha
-    { y: 548, w: 73, h: 124, x: [163, 270, 372, 475] },   // arriba
+    { y: 0, w: 75, h: 109, x: [0, 77, 154, 231] },     // abajo
+    { y: 111, w: 89, h: 74, x: [0, 91, 182, 273] },    // izquierda
+    { y: 187, w: 87, h: 72, x: [0, 89, 178, 267] },    // derecha
+    { y: 261, w: 73, h: 124, x: [0, 75, 150, 225] },   // arriba
   ],
   [ // etapa 2 — Kathira
-    { y: 755, w: 73, h: 137, x: [596, 702, 810, 919] },   // abajo
-    { y: 355, w: 85, h: 119, x: [585, 696, 811, 918] },   // izquierda
-    { y: 164, w: 85, h: 121, x: [599, 710, 818, 927] },   // derecha
-    { y: 544, w: 81, h: 134, x: [592, 696, 804, 914] },   // arriba
+    { y: 387, w: 73, h: 137, x: [0, 75, 150, 225] },   // abajo
+    { y: 526, w: 85, h: 119, x: [0, 87, 174, 261] },   // izquierda
+    { y: 647, w: 85, h: 121, x: [0, 87, 174, 261] },   // derecha
+    { y: 770, w: 81, h: 134, x: [0, 83, 166, 249] },   // arriba
   ],
-  /* Ojo con esta etapa: en la hoja los rótulos de los laterales están
-     cruzados. La fila que dice "DERECHA" (y=133) tiene al bicho mirando a la
-     IZQUIERDA y la que dice "IZQUIERDA" (y=329) mirando a la derecha, así que
-     acá van al revés que en las otras dos etapas — que sí están bien. Se
-     mapearon por el dibujo, no por el texto; el mismo problema que ya había
-     traído la hoja de Merlí. */
   [ // etapa 3 — Kathrix
-    { y: 743, w: 115, h: 166, x: [1025, 1156, 1282, 1406] },  // abajo
-    { y: 133, w: 117, h: 157, x: [1037, 1161, 1286, 1408] },  // izquierda
-    { y: 329, w: 118, h: 150, x: [1020, 1146, 1272, 1397] },  // derecha
-    { y: 509, w: 112, h: 194, x: [1025, 1153, 1279, 1408] },  // arriba
+    { y: 906, w: 115, h: 166, x: [0, 117, 234, 351] },   // abajo
+    { y: 1074, w: 117, h: 157, x: [0, 119, 238, 357] },  // izquierda
+    { y: 1233, w: 118, h: 150, x: [0, 120, 240, 360] },  // derecha
+    { y: 1385, w: 112, h: 194, x: [0, 114, 228, 342] },  // arriba
   ],
 ];
 const BICHO_ANIM_MS = 130;    // cuánto dura cada cuadro de la caminata
@@ -271,11 +272,17 @@ const merli = {
    config/sprites.js), así que cada cuadro es un rectángulo propio en vez de
    fila*ancho + columna*alto como en las hojas de arriba. Coordenadas
    sacadas midiendo el alfa de huevo_mascota.png. */
-const HUEVO_Y = { idle: 41, hatch: 729 };
+/* Coordenadas de huevo_hoja.png, empaquetada aparte por
+   scripts/recortar-hojas.py a partir de la hoja cruda del generador (10
+   filas, de las que sólo se usan idle y hatch — ver arte-fuente/ y
+   docs/deuda-tecnica.md 4f). Las filas 1 y 2 de la cruda (variantes de
+   sacudida y cáscara ya rota) quedaron afuera por no usarse hoy; siguen
+   disponibles ahí si hace falta más variedad después. */
+const HUEVO_Y = { idle: 0, hatch: 182 };
 const HUEVO_H = { idle: 180, hatch: 181 };
 const HUEVO_IDLE_X = [
-  [35, 173], [200, 336], [364, 501], [529, 667], [705, 843],
-  [871, 1013], [1040, 1178], [1208, 1348], [1368, 1501], [1521, 1654],
+  [0, 138], [140, 276], [278, 415], [417, 555], [557, 695],
+  [697, 839], [841, 979], [981, 1121], [1123, 1256], [1258, 1391],
 ];
 const HUEVO_IDLE = HUEVO_IDLE_X.map(([x0, x1]) =>
   ({ x: x0, y: HUEVO_Y.idle, w: x1 - x0, h: HUEVO_H.idle }));
@@ -284,8 +291,8 @@ const HUEVO_IDLE = HUEVO_IDLE_X.map(([x0, x1]) =>
    estalla -> cáscara rota. El último cuadro queda fijo para siempre como
    decoración del huevo ya nacido. */
 const HUEVO_HATCH_X = [
-  [17, 143], [156, 280], [288, 415], [435, 564], [586, 715],
-  [731, 920], [920, 1129], [1144, 1262], [1278, 1473], [1473, 1659],
+  [0, 126], [128, 252], [254, 381], [383, 512], [514, 643],
+  [645, 834], [836, 1045], [1047, 1165], [1167, 1362], [1364, 1550],
 ];
 const HUEVO_HATCH = HUEVO_HATCH_X.map(([x0, x1]) =>
   ({ x: x0, y: HUEVO_Y.hatch, w: x1 - x0, h: HUEVO_H.hatch }));
