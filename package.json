@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "sprites": "python scripts/sprites.py",
+    "icono": "python scripts/icono.py",
     "lint": "eslint src worker",
     "smoke": "node smoke.mjs",
     "smoke:worker": "node worker/test.mjs",

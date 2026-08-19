@@ -95,6 +95,63 @@ Dos avisos:
   `sin-novedades` y el cartelito queda apagado. La build no se corta a propósito:
   quedarse sin aviso es molesto, no poder publicar es peor.
 
+## El icono y la portada del link
+
+Las dos cosas las arma el mismo script, porque son lo mismo: cómo se ve el
+juego desde afuera.
+
+```bash
+npm run icono                      # icono + portada
+python scripts/icono.py --revision # además deja el maskable ya recortado al
+                                   # círculo, en arte-fuente/_revision/
+```
+
+| sale de | queda en | para qué |
+|---|---|---|
+| `arte-fuente/icono.ico` (o .png) | `public/icono-192.png` | Android, `apple-touch-icon`, pestaña |
+| ídem | `public/icono-512.png` | splash de instalación |
+| ídem | `public/icono-maskable.png` | Android lo recorta a círculo o squircle |
+| `arte-fuente/portada.*` | `public/portada.jpg` | la vista previa del link |
+
+**Si no hay `arte-fuente/icono.*`, el icono se arma con la cara de Kath
+recortada de su propia hoja de sprites.** Para volver a esa versión alcanza con
+sacar el icono de `arte-fuente/` y correr el script de nuevo.
+
+El maskable se decide solo: si la imagen fuente llega a los cuatro bordes va a
+pantalla completa (lo que Android recorta de las esquinas es fondo), y si tiene
+transparencia alrededor se achica y se apoya sobre un fondo rosa, porque si no
+el recorte se le come el pelo. Por eso conviene mirar la imagen de revisión y
+no el PNG suelto.
+
+### La portada del link
+
+Es lo que se ve al mandar la dirección por WhatsApp. Los `og:` de `index.html`
+la declaran, y ahí hay una trampa: **esas URLs van absolutas**, no relativas.
+El resto del sitio usa rutas relativas para poder servirse desde cualquier
+carpeta, pero el que arma la vista previa no es el navegador — es un robot que
+lee el HTML suelto y no tiene contra qué resolver un `./portada.jpg`. Con ruta
+relativa, la mayoría de los clientes no muestran imagen. **Si cambia el
+dominio, hay que cambiarlas a mano en `index.html`.**
+
+1200x630 tampoco es capricho: es lo que esperan WhatsApp, Instagram y Twitter,
+y lo que dicen los meta `og:image:width` / `height`. Si no coinciden, algunos
+clientes recortan por su cuenta.
+
+Y WhatsApp **cachea la vista previa por dominio y por bastante tiempo**. Si
+cambiás la portada después de haber mandado el link, el que ya lo recibió sigue
+viendo la vieja. Para forzarla hay que cambiarle el nombre al archivo (y el
+`og:image`), no sólo el contenido.
+
+### Dos cosas que muerden al deployar sólo un icono
+
+- **Cambiar sólo el icono no invalida la caché.** La versión del service worker
+  sale del hash de los nombres en `dist/assets/`, y lo de `public/` se copia sin
+  hash. Si no cambió nada más, la versión es la misma y la caché vieja no se
+  borra: el icono nuevo aparece recién en la segunda carga.
+- **Si ya lo instaló en el teléfono, el icono del launcher no se actualiza.**
+  Android y iOS lo copian al instalar. Hay que sacarlo de la pantalla de inicio
+  y volver a agregarlo.
+
 ## Errores comunes
 
 - **`ENOENT: no such file or directory, scandir '...\worker\dist'`** — se
