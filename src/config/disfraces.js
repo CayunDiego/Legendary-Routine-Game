@@ -34,6 +34,13 @@ const DISFRACES = [
     hallazgo: 'Hay una cinta roja enredada en el pasto...',
   },
   {
+    id: 'corona',
+    nombre: 'Corona de reina',
+    icono: '👑',
+    desc: 'De oro, con rubí y amatistas. Y tira brillitos sola.',
+    hallazgo: 'Algo dorado destella entre el pasto, y no es una moneda...',
+  },
+  {
     id: 'capa',
     nombre: 'Capa de superheroína',
     icono: '🦸',

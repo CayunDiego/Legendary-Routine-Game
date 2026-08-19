@@ -2,14 +2,14 @@ import { MAPA, SOLIDOS, OBJETOS, INICIO } from '../config/mapa.js';
 import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO, SPRITE_MERLI, SPRITE_HUEVO, SPRITE_COMPANERO } from '../config/sprites.js';
 import { FLAGS } from '../config/flags.js';
 import { KATH, MERLI, COMPANERO_ANIM, HUEVO_IDLE, HUEVO_HATCH } from '../config/recortes.js';
-import { dentroDeZonaMerli } from '../config/merli.js';
+import { dentroDeZonaMerli, pesoTileMerli } from '../config/merli.js';
 /* niveles.js no importa nada, así que traerlo acá no arma el ciclo que sí
    armaría pedirle xpNecesaria() a gameLogic.js (ver el comentario de allá). */
 import { xpNecesaria } from '../state/niveles.js';
 import { TILE_SRC, S, TILE, lienzo } from './drawing.js';
 import { TILES } from './tiles.js';
 import { ART_OBJ, SPR } from './objetos.js';
-import { SPR_DISFRAZ, ALTO_EXTRA, ANCHO_EXTRA } from './disfraces.js';
+import { SPR_DISFRAZ, bamboleoDisfraz, destellosDisfraz, ALTO_EXTRA, ANCHO_EXTRA } from './disfraces.js';
 import { sonar } from './sonido.js';
 
 /* ---------------------------------------------------------------------------
@@ -523,7 +523,18 @@ function actualizarMerli(dt) {
     return;
   }
 
-  const elegido = candidatos[Math.floor(Math.random() * candidatos.length)];
+  /* Sorteo con peso, no parejo: las casillas del dormitorio tiran mas (ver
+     QUERENCIA en config/merli.js). Con esto el paseo por la casa se aleja de a
+     ratos y vuelve solo, sin calcularle un camino de regreso: en la puerta del
+     cuarto, quedarse adentro es varias veces mas probable que salir. */
+  const total = candidatos.reduce((s, c) => s + pesoTileMerli(c.nx, c.ny), 0);
+  let r = Math.random() * total;
+  let elegido = candidatos[candidatos.length - 1];
+  for (const c of candidatos) {
+    r -= pesoTileMerli(c.nx, c.ny);
+    if (r <= 0) { elegido = c; break; }
+  }
+
   merli.dir = elegido.dir;
   merli.desdeX = merli.px; merli.desdeY = merli.py;
   merli.tx = elegido.nx; merli.ty = elegido.ny;
@@ -819,9 +830,16 @@ function dibujarJugadora() {
   // pelo tiene que taparles la base, y la capa asomando por los costados)
   // antes del sprite, y lo que va delante (el moño, que se apoya SOBRE el
   // pelo, y la capa vista de espaldas) después.
-  const disfraz = SPR_DISFRAZ[juego.estado().disfrazPuesto];
-  const capas = disfraz ? disfraz[fila] : null;
-  if (capas && capas.atras) dibujarCapaDisfraz(capas.atras, dx, dy);
+  const puesto = juego.estado().disfrazPuesto;
+  const disfraz = SPR_DISFRAZ[puesto];
+  // SPR_DISFRAZ trae SIEMPRE cuatro cuadros por direccion (los accesorios que
+  // no se animan repiten el mismo lienzo), asi que aca no hay que preguntar.
+  const capas = disfraz ? disfraz[fila][f] : null;
+  // El accesorio no tiene un dibujo por cuadro: se corre unos pocos pixeles
+  // segun el cuadro para que se bambolee al caminar y al bailar (BAMBOLEO en
+  // disfraces.js). Quieta, el corrimiento es cero.
+  const vaiven = bamboleoDisfraz(puesto, f);
+  if (capas && capas.atras) dibujarCapaDisfraz(capas.atras, dx, dy, vaiven);
 
   if (hoja) {
     ctx.drawImage(hoja, f * FRAME_W, fila * FRAME_H, FRAME_W, FRAME_H, dx, dy, w, h);
@@ -830,15 +848,49 @@ function dibujarJugadora() {
     ctx.fillRect(dx + 12, dy + 20, 26, 34);
   }
 
-  if (capas && capas.adelante) dibujarCapaDisfraz(capas.adelante, dx, dy);
+  if (capas && capas.adelante) dibujarCapaDisfraz(capas.adelante, dx, dy, vaiven);
+  dibujarDestellos(puesto, fila, dx, dy);
+}
+
+/* Los brillitos de la corona. Van con el reloj del motor y no con el cuadro de
+   animacion, para que titilen igual parada (ver DESTELLOS en disfraces.js).
+
+   Cada uno es una cruz de 4 puntas que crece y se apaga. La mitad del ciclo la
+   pasa apagada a proposito: encendida todo el tiempo deja de leerse como
+   destello y pasa a ser un adorno mas de la corona. */
+const DESTELLO_MS = 1500;
+const DESTELLO_COLOR = '#fffdf0';
+
+function dibujarDestellos(id, fila, dx, dy) {
+  const lista = destellosDisfraz(id, fila);
+  if (!lista) return;
+
+  const e = ESC_JUG;
+  for (const [px, py, fase] of lista) {
+    const v = Math.sin((((tiempoAnim / DESTELLO_MS) + fase) % 1) * Math.PI * 2);
+    if (v <= 0.08) continue;                 // apagado la mitad del ciclo
+    const brazo = v > 0.72 ? 2 : (v > 0.34 ? 1 : 0);
+
+    const bx = dx + px * e, by = dy + py * e;
+    ctx.globalAlpha = Math.min(1, v * 1.4);
+    ctx.fillStyle = DESTELLO_COLOR;
+    ctx.fillRect(bx, by, e, e);
+    if (brazo) {
+      ctx.fillRect(bx - brazo * e, by, brazo * e, e);
+      ctx.fillRect(bx + e, by, brazo * e, e);
+      ctx.fillRect(bx, by - brazo * e, e, brazo * e);
+      ctx.fillRect(bx, by + e, e, brazo * e);
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 /* El lienzo del accesorio es ALTO_EXTRA filas más alto que el cuadro, para que
    las orejas y las antenas puedan salirse por arriba (ver engine/disfraces.js).
    Se sube otro tanto al dibujarlo, así el resto cae justo sobre el sprite. */
-function dibujarCapaDisfraz(img, dx, dy) {
+function dibujarCapaDisfraz(img, dx, dy, vaiven = [0, 0]) {
   ctx.drawImage(img,
-    dx - ANCHO_EXTRA * ESC_JUG, dy - ALTO_EXTRA * ESC_JUG,
+    dx + (vaiven[0] - ANCHO_EXTRA) * ESC_JUG, dy + (vaiven[1] - ALTO_EXTRA) * ESC_JUG,
     (FRAME_W + ANCHO_EXTRA * 2) * ESC_JUG, (FRAME_H + ALTO_EXTRA) * ESC_JUG);
 }
 

@@ -489,6 +489,116 @@ paso('disfraces: aparecen todos y no se repiten', () => {
   igual(logica.buscarDisfrazEnCesped(), null, 'con la coleccion completa ya no aparece nada');
 });
 
+const fs = await import('node:fs');
+paso('emojis: ninguno del bloque que Windows no dibuja', () => {
+  // Historia: U+1FA99, U+1FAA5 y U+1FAA7 salieron como cuadrados en Windows y
+  // hubo que cambiarlos a mano; meses despues volvio a pasar con U+1FA9E en el
+  // espejo del bano. Los cuatro son del mismo bloque, U+1FA70..U+1FAFF (Emoji
+  // 12-14, de 2019 en adelante), que seguiemj.ttf de Windows 10 no trae.
+  //
+  // Van escritos como codepoint y no dibujados a proposito: si se pegan aca,
+  // este mismo paso falla por su propio comentario. Ya paso.
+  //
+  // No se puede probar como se ve una fuente desde node, pero si se puede
+  // prohibir el bloque entero, que es de donde salieron los cuatro casos. Lo
+  // demas que usa el juego es Emoji 11 o anterior y se vio andar.
+  const raiz = new URL('./src/', import.meta.url);
+  const malos = [];
+  const mirar = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const ruta = new URL(e.name + (e.isDirectory() ? '/' : ''), dir);
+      if (e.isDirectory()) { mirar(ruta); continue; }
+      if (!/\.(js|jsx)$/.test(e.name)) continue;
+      const texto = fs.readFileSync(ruta, 'utf8');
+      let linea = 1;
+      for (const ch of texto) {
+        if (ch === '\n') linea++;
+        const cp = ch.codePointAt(0);
+        if (cp >= 0x1FA70 && cp <= 0x1FAFF) {
+          malos.push(`${e.name}:${linea} U+${cp.toString(16).toUpperCase()}`);
+        }
+      }
+    }
+  };
+  mirar(raiz);
+  if (malos.length) {
+    throw new Error('emojis que Windows dibuja como cuadrado: ' + malos.join(', '));
+  }
+});
+
+const mapaCfg = await vite.ssrLoadModule('/src/config/mapa.js');
+const arteObj = await vite.ssrLoadModule('/src/engine/objetos.js');
+paso('mapa: ningun mueble tapa una puerta ni pisa a otro mueble', () => {
+  // Este paso existe por un bug real: al amoblar el living, un sillon de 2
+  // casillas quedo justo encima de la puerta al jardin. No rompia nada visible
+  // —al jardin se seguia saliendo por la cocina— asi que el cuarto se veia bien
+  // y andaba mal. Un mueble tapando una puerta no se nota jugando hasta que
+  // alguien intenta salir por ahi.
+  const { MAPA, SOLIDOS, OBJETOS } = mapaCfg;
+  const { ART_OBJ } = arteObj;
+  const alto = MAPA.length, ancho = MAPA[0].length;
+
+  for (const f of MAPA) igual(f.length, ancho, 'todas las filas del mapa miden lo mismo');
+
+  const solido = MAPA.map((f) => [...f].map((c) => SOLIDOS.has(c)));
+  const ocupado = new Map();
+  for (const o of OBJETOS) {
+    const a = ART_OBJ[o.art];
+    if (!a) throw new Error('objeto sin arte: ' + o.art);
+    for (let j = 0; j < a.th; j++) for (let i = 0; i < a.tw; i++) {
+      const x = o.x + i, y = o.y + j;
+      if (x >= ancho || y >= alto) throw new Error(`${o.art} se sale del mapa en ${x},${y}`);
+      if (o.decor || a.decor || o.pared) continue;
+      const antes = ocupado.get(x + ',' + y);
+      if (antes) throw new Error(`${o.art} y ${antes} pisan la misma casilla ${x},${y}`);
+      ocupado.set(x + ',' + y, o.art);
+      solido[y][x] = true;
+    }
+  }
+
+  // Las puertas de esta casa estan todas en paredes horizontales, asi que lo
+  // que tiene que quedar libre es la casilla de arriba y la de abajo.
+  let puertas = 0;
+  for (let y = 0; y < alto; y++) for (let x = 0; x < ancho; x++) {
+    if (MAPA[y][x] !== 'D') continue;
+    puertas++;
+    for (const dy of [-1, 1]) {
+      const ny = y + dy;
+      if (ny < 0 || ny >= alto || solido[ny][x]) {
+        throw new Error(`la puerta ${x},${y} esta tapada en ${x},${ny}`);
+      }
+    }
+  }
+  if (puertas < 6) throw new Error('se perdieron puertas del mapa: ' + puertas);
+});
+
+const arteDisfraz = await vite.ssrLoadModule('/src/engine/disfraces.js');
+paso('disfraces: todos se bambolean, y quieta ninguno esta corrido', () => {
+  // El cuadro 0 es la pose quieta: si algun accesorio arranca corrido, se ve
+  // fuera de lugar todo el tiempo que ella no camina, que es la mayoria.
+  for (const d of DISFRACES) {
+    const q = arteDisfraz.bamboleoDisfraz(d.id, 0);
+    if (q[0] !== 0 || q[1] !== 0) throw new Error(d.id + ' arranca corrido: ' + q);
+
+    // Y tiene que moverse en ALGUN cuadro, si no el disfraz queda clavado
+    // justo en la coreografia que baila siempre de frente. Vale de las dos
+    // formas: con bamboleo (se corre el lienzo) o con dibujo propio por cuadro
+    // (la capa). Lo que no vale es quedarse quieto.
+    let semueve = false;
+    for (let f = 0; f < 4; f++) {
+      const b = arteDisfraz.bamboleoDisfraz(d.id, f);
+      if (b[0] || b[1]) semueve = true;
+      if (Math.abs(b[0]) > 1 || Math.abs(b[1]) > 1) throw new Error(d.id + ' se corre mas de 1 px: ' + b);
+    }
+    const porCuadro = arteDisfraz.DISFRAZ_ART[d.id].some((dir) => Array.isArray(dir));
+    if (!semueve && !porCuadro) throw new Error(d.id + ' no se mueve en ningun cuadro');
+  }
+
+  // Sin disfraz puesto no se corre nada (disfrazPuesto es null)
+  const nada = arteDisfraz.bamboleoDisfraz(null, 2);
+  if (nada[0] !== 0 || nada[1] !== 0) throw new Error('sin disfraz no se corre nada');
+});
+
 paso('disfraces: solo se puede poner lo que ya encontro', () => {
   const est = logica.obtenerEstado();
   est.disfraces = ['orejas'];
@@ -538,7 +648,7 @@ paso('fusion: la mascota nacio una sola vez, vale la fecha mas temprana', () => 
 });
 
 paso('fusion: el oro nunca queda negativo', () => {
-  const a = partidaBase({ seq: 1, oroGanado: 10, canjeados: [{ cid: 'x', id: 'cita', fecha: '2026-08-15' }] });
+  const a = partidaBase({ seq: 1, oroGanado: 10, canjeados: [{ cid: 'x', id: 'delivery', fecha: '2026-08-15' }] });
   const f = fusion.fusionar(a, partidaBase({ seq: 2, oroGanado: 10 }));
   if (f.oro < 0) throw new Error('oro negativo: ' + f.oro);
 });
@@ -554,6 +664,24 @@ paso('copia: el sobre se arma y se valida', () => {
   const sobre = copia.armarSobre(logica.EST_INICIAL());
   igual(sobre.juego, copia.MARCA, 'marca');
   if (!disco.esPartida(sobre.estado)) throw new Error('el sobre no lleva una partida valida');
+});
+
+const reporte = await vite.ssrLoadModule('/src/state/reporte.js');
+paso('reporte: el mensaje lleva titulo automatico y el link va a wa.me', () => {
+  const m = reporte.armarMensaje('bug', '  no me anda el huevo  ', { nivel: 5 });
+  if (!m.startsWith('🐛 *Bug en ')) throw new Error('sin titulo automatico: ' + m);
+  if (!m.includes('nivel 5')) throw new Error('sin el nivel');
+  if (!m.includes('v ' + cfg.version)) throw new Error('sin la version del juego');
+  if (!m.endsWith('no me anda el huevo')) throw new Error('no recorta los espacios');
+
+  // El tipo elegido tiene que cambiar el titulo, si no elegir no sirve de nada
+  const idea = reporte.armarMensaje('idea', 'que merli maulle', {});
+  if (!idea.startsWith('💡 *Idea en ')) throw new Error('el tipo no cambia el titulo');
+
+  // wa.me no acepta +, espacios ni guiones: el numero se limpia solo
+  const link = reporte.linkWhatsapp(m);
+  if (!/^https:\/\/wa\.me\/\d+\?text=/.test(link)) throw new Error('link mal armado: ' + link);
+  igual(decodeURIComponent(link.split('?text=')[1]), m, 'el mensaje viaja entero en el link');
 });
 
 /* ---------------------------------------------------------------------------
