@@ -6,6 +6,7 @@ import { useDisco, useSync } from '../../hooks/useStore.js';
 import * as disco from '../../state/persistencia.js';
 import * as sync from '../../state/sync.js';
 import { descargarCopia, restaurarCopia } from '../../state/copia.js';
+import { TIPOS, tipoPorId, armarMensaje, linkWhatsapp } from '../../state/reporte.js';
 
 /* ---------------------------------------------------------------------------
  *  La pestaña donde Kath puede ver y arreglar todo lo del guardado.
@@ -45,6 +46,8 @@ export default function TabAjustes() {
   const [mostrarCodigo, setMostrarCodigo] = useState(false);
   const [codigoNuevo, setCodigoNuevo] = useState('');
   const [conectando, setConectando] = useState(false);
+  const [tipoReporte, setTipoReporte] = useState('bug');
+  const [textoReporte, setTextoReporte] = useState('');
   const archivoRef = useRef(null);
 
   const salud = disco.salud();
@@ -240,6 +243,74 @@ export default function TabAjustes() {
           onChange={alElegirArchivo}
         />
       </div>
+
+      {/* --- reportes ------------------------------------------------------- */}
+      {!!CONFIG.whatsapp && (
+        <div className="panel">
+          <div className="panelTitulo">Contarle algo a {CONFIG.autor}</div>
+          <div className="sub">
+            Si algo se rompe o se te ocurre algo, mandámelo por acá. Se abre tu
+            WhatsApp con el mensaje ya escrito: sólo tenés que tocar enviar.
+          </div>
+
+          <div className="tiposReporte">
+            {TIPOS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={'tipoReporte' + (tipoReporte === t.id ? ' activo' : '')}
+                aria-pressed={tipoReporte === t.id}
+                onClick={() => { setTipoReporte(t.id); sonar('menu'); }}
+              >
+                <span className="emo">{t.emoji}</span>
+                {t.nombre}
+              </button>
+            ))}
+          </div>
+
+          <div className="sub">{tipoPorId(tipoReporte).ayuda}</div>
+
+          <textarea
+            className="inp areaReporte"
+            value={textoReporte}
+            placeholder={tipoPorId(tipoReporte).placeholder}
+            onChange={(e) => setTextoReporte(e.target.value)}
+          />
+
+          {/* Va como <a> y no como <button> con window.open: wa.me es un link a
+              una app, y abierto así el celular lo manda derecho a WhatsApp sin
+              pasar por una pestaña del navegador ni chocar con el bloqueador
+              de popups. Vacío no navega: un mensaje sin texto es sólo el
+              título automático y no le sirve a nadie. */}
+          <a
+            className={'btnPrim' + (textoReporte.trim() ? '' : ' deshabilitado')}
+            href={linkWhatsapp(armarMensaje(tipoReporte, textoReporte, EST)) || '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-disabled={!textoReporte.trim()}
+            onClick={(e) => {
+              if (!textoReporte.trim()) { e.preventDefault(); return; }
+              sonar('ok');
+            }}
+          >Mandárselo a {CONFIG.autor}</a>
+
+          {navigator.clipboard && (
+            <button
+              className="btnPrim"
+              disabled={!textoReporte.trim()}
+              onClick={() => {
+                navigator.clipboard.writeText(armarMensaje(tipoReporte, textoReporte, EST))
+                  .then(() => decir('Mensaje copiado. Pegalo donde quieras.'))
+                  .catch(() => decir('No se pudo copiar.', true));
+              }}
+            >Copiar el mensaje</button>
+          )}
+          <div className="sub">
+            Si no se abre WhatsApp solo (pasa en la compu), copiá el mensaje y
+            mandámelo por donde te quede más cómodo.
+          </div>
+        </div>
+      )}
 
       {aviso && <div className={aviso.malo ? 'aviso' : 'sub'} role="status">{aviso.txt}</div>}
 
