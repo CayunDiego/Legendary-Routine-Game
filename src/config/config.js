@@ -12,7 +12,12 @@ const CONFIG = {
   misionesParaRacha: 5,
   // La "hora de reinicio": a las 4 AM arranca el día nuevo (así trasnochar no rompe la racha)
   horaReinicio: 4,
-  version: '1.2.0',
+  /* La versión que decide el cartelito de "✨ Hay algo nuevo" al entrar. No es
+     la versión de la build: es el SHA del último commit marcado como novedad
+     para Kath (trailer `Novedad: si`), que calcula leerNovedad() en
+     vite.config.js. Un deploy de puros fixes no la mueve y no avisa nada.
+     Quien pone la marca es el comando /commit, no la memoria de nadie. */
+  version: (import.meta.env && import.meta.env.VITE_VERSION_NOVEDAD) || 'sin-novedades',
 
   /* Dirección del Worker que guarda las partidas en la nube. Vaciar esto hace
      que el juego ande 100% local, sin sincronizar y sin errores: es un extra,
