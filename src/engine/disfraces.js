@@ -22,9 +22,11 @@ import { pintar } from './drawing.js';
  * ==========================================================================*/
 
 /* El lienzo del accesorio es más grande que el cuadro de Kath por los cuatro
-   costados: ALTO_EXTRA arriba para las antenas, y ANCHO_EXTRA a cada lado para
-   las orejas de Shrek, que salen para afuera. Sin esto no habría lugar — el
-   afro ya ocupa de x=3 a x=20 de los 24 de ancho que tiene el cuadro. */
+   costados: ALTO_EXTRA arriba para lo que se va por encima de la cabeza (las
+   antenas, y las orejas de Shrek, que suben en diagonal hasta 3 px por arriba
+   del cuadro) y ANCHO_EXTRA a cada lado para lo que se va por los costados.
+   Sin esto no habría lugar: el afro ya ocupa de x=3 a x=20 de los 24 de ancho
+   que tiene el cuadro, y arriba de la cabeza quedan 2 px. */
 const ALTO_EXTRA = 8;
 const ANCHO_EXTRA = 6;
 const ANCHO = 24, ALTO = 32;
@@ -46,55 +48,73 @@ const RAIZ = 11;
 const VERDE = '#8bc34a', VERDE_LUZ = '#aada6b', VERDE_OSC = '#5f8f2f';
 
 /* La oreja se autorea por FILAS de 1 px en vez de por bloques: con bloques de
-   4 px la curva de la trompeta quedaba escalonada y se leía como tres cajas
+   4 px la curva de la trompeta quedaba escalonada y se leia como tres cajas
    apiladas. Cada fila es [y, dx, ancho], con dx contado desde la base pegada a
-   la cabeza. Así se puede dibujar la panza redonda de la campana y el cuello
-   fino que sale del pelo.
+   la cabeza.
 
-   El perfil, mirando la oreja derecha:
+   Mide la mitad que la primera version (8 x 6 contra 13 x 8): a tamano completo
+   la trompeta era mas ancha que media cabeza y se comia el sprite. Achicarla
+   obligo a correr la base hacia AFUERA —de x=15 a x=17 de frente— porque con el
+   cuello corto y la base donde estaba, el afro (que llega hasta x=20) se la
+   tapaba entera y no asomaba nada.
 
-        dx  0123456789012
-      y=3            ####            y=4           ######      |  campana, redonda y
-      y=5          #######      |  con la boca mirando
-      y=6        #########      |  para arriba y afuera
-      y=7   #############      /
-      y=8   ############    <- cuello, sale del pelo
-      y=9    ###########
-      y=10       ######                                                    */
+   Salen en DIAGONAL de las esquinas de arriba del pelo, no horizontales de los
+   costados. Apoyadas al nivel de la oreja quedaban como dos manchas verdes
+   pegadas a la cara; arriba se leen como las trompetas del ogro.
+
+   La forma es una CAMPANA REDONDA con el agujero adentro, y un tubo fino que
+   baja hasta el pelo — no una cuna que se va ensanchando. Esa es la diferencia
+   entre "algo verde en diagonal" y una oreja de Shrek: en el original casi todo
+   el volumen esta en la boca, y el tubo es angosto.
+
+   La oreja derecha, de arriba hacia abajo (la fila 6 es la base, tapada por el
+   afro). El `.` de adentro de la campana es el agujero:
+
+        dx  01234567
+      y=0      ###
+      y=1     ##..#        <- campana: anillo cerrado con el agujero adentro
+      y=2     ##..#
+      y=3     ####
+      y=4    ####          <- de aca para abajo, el tubo
+      y=5   ###
+      y=6  ##
+
+   El tubo tiene 3 filas y no 4: con 4 la oreja sobresalia 1 px de mas y la
+   campana quedaba despegada de la cabeza. Al sacar una fila hay que correr el
+   ancla de -2 a -1, si no la base se sale del pelo en vez de bajar la punta.  */
 const OREJA_CUERPO = [
-  [3,  8,  4],
-  [4,  7,  6],
-  [5,  6,  7],
-  [6,  4,  9],
-  [7,  0, 13],
-  [8,  0, 12],
-  [9,  1, 11],
-  [10, 5,  6],
+  [0, 4, 3],
+  [1, 3, 5],
+  [2, 3, 5],
+  [3, 3, 4],
+  [4, 2, 4],
+  [5, 1, 3],
+  [6, 0, 2],
 ];
 
-/* Brillo sobre el labio de la campana y el lomo del cuello. */
+/* Brillo por el canto de arriba a la izquierda, que es el que da la luz. */
 const OREJA_LUZ = [
-  [3,  8, 4],
-  [4,  7, 2],
-  [4, 12, 1],
-  [5, 12, 1],
-  [6, 12, 1],
-  [6,  4, 3],
-  [7,  0, 4],
+  [0, 4, 3],
+  [1, 3, 2],
+  [3, 3, 1],
+  [5, 1, 1],
+  [6, 0, 1],
 ];
 
-/* El hueco de la trompeta, que es lo que la hace leerse como boca y no como
-   una mancha verde. Va corrido hacia arriba y hacia afuera —no centrado— para
-   que la boca se lea apuntando en diagonal y la panza de abajo quede llena.
-   Se completa con el filo de abajo, que apoya la oreja contra el fondo. */
+/* El agujero de la campana (dx5-6, cerrado por arriba, abajo y los dos lados)
+   y el canto de abajo a la derecha del tubo. Sin el agujero la boca no se lee
+   y la oreja queda un palo verde. */
 const OREJA_SOMBRA = [
-  [4,  9, 3],
-  [5,  8, 4],
-  [6,  8, 4],
-  [7,  9, 3],
-  [9,  1, 4],
-  [10, 5, 6],
+  [1, 5, 2],
+  [2, 5, 2],
+  [4, 4, 2],
+  [5, 3, 1],
+  [6, 1, 1],
 ];
+
+
+
+
 
 /* Convierte filas de 1 px —[y, dx, ancho], con dx contado desde `x`— en los
    rectangulos que espera pintar(). `y0` corre el dibujo entero hacia abajo,
@@ -105,12 +125,14 @@ function filas(rows, x, color, y0 = 0) {
 }
 
 /* La oreja derecha, con la base pegada a la cabeza en `x` y creciendo hacia
-   afuera. */
-function orejaShrek(x) {
+   afuera. `y` la corre hacia abajo: de perfil la cabeza es mas angosta arriba,
+   asi que la oreja apoyada a la misma altura que de frente deja un hueco entre
+   la boca de la trompeta y el pelo. */
+function orejaShrek(x, y = 0) {
   return [
-    ...filas(OREJA_CUERPO, x, VERDE),
-    ...filas(OREJA_LUZ, x, VERDE_LUZ),
-    ...filas(OREJA_SOMBRA, x, VERDE_OSC),
+    ...filas(OREJA_CUERPO, x, VERDE, y),
+    ...filas(OREJA_LUZ, x, VERDE_LUZ, y),
+    ...filas(OREJA_SOMBRA, x, VERDE_OSC, y),
   ];
 }
 
@@ -208,10 +230,10 @@ const DISFRAZ_ART = {
      una, la de atrás de la cabeza: la otra quedaría apuntando a la cámara y
      de costado no se leería como oreja. */
   orejas: [
-    { atras: conBorde([...orejaShrek(15), ...espejar(orejaShrek(15))]) },  // abajo
-    { atras: conBorde(orejaShrek(14)) },                                   // izquierda
-    { atras: conBorde(espejar(orejaShrek(14))) },                          // derecha
-    { atras: conBorde([...orejaShrek(15), ...espejar(orejaShrek(15))]) },  // arriba
+    { atras: conBorde([...orejaShrek(16, -1), ...espejar(orejaShrek(16, -1))]) },  // abajo
+    { atras: conBorde(orejaShrek(14, -1)) },                                       // izquierda
+    { atras: conBorde(espejar(orejaShrek(14, -1))) },                              // derecha
+    { atras: conBorde([...orejaShrek(16, -1), ...espejar(orejaShrek(16, -1))]) },  // arriba
   ],
 
   antenitas: [
