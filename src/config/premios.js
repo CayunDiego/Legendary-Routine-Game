@@ -19,10 +19,7 @@ const PREMIOS = [
     desc:'Te pido online algo chiquito que quieras para tu colección o hobby y te llega a tu casa.' },
     
   { id:'delivery', nombre:'Antojo a domicilio',  costo:350, icono:'🍕',
-    desc:'Elegís lo que tengas ganas de comer, me avisás, y te lo mando por delivery.' },
-    
-  { id:'cita',     nombre:'Cita sorpresa',       costo:350, icono:'💝',
-    desc:'Vos ponés la fecha, yo pongo el resto.' }
+    desc:'Elegís lo que tengas ganas de comer, me avisás, y te lo mando por delivery.' }
 ];
 
 export { PREMIOS };
