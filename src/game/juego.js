@@ -48,6 +48,9 @@ function interactuar(o) {
     case 'companero': accionCompanero(o); break;
     case 'placard': abrirMenu('placard'); break;
     case 'info': accionCartel(); break;
+    case 'mesa': accionMesa(); break;
+    case 'inodoro': accionInodoro(); break;
+    case 'espejo': accionEspejo(); break;
     case 'diego': accionDiego(); break;
   }
 }
@@ -230,6 +233,65 @@ function accionDiego() {
     cola.push({ t: `Tenés ${EST.oro} 💰 juntadas.\nEl puesto de premios está acá al lado. Yo los cumplo.` });
   }
   dialogo(cola);
+}
+
+/* La mesa de la cocina no da misión ni abre ningún panel: está para que la
+   casa se sienta habitada. Lo que hay encima sale del estado, así que la mesa
+   "se entera" sola de lo que Kath hizo hoy — las migas aparecen recién cuando
+   comió de verdad, no siempre.
+
+   Va rotando en vez de sortear al azar: con `Math.random()` sobre tres frases
+   se repite la misma dos y tres veces seguidas bastante seguido, y eso se lee
+   como que el juego no tiene nada más para decir. */
+const MESA_DIBUJO = [
+  '🍽️ La mesa de la cocina\n\nHay hojas y lápices de colores desparramados.\nSe ve que estuviste haciendo un lindo dibujo.',
+  '🍽️ La mesa de la cocina\n\nUn dibujo a medio terminar y el lápiz naranja gastado hasta la mitad.\nEse color siempre se termina primero.',
+  '🍽️ La mesa de la cocina\n\nQuedó un dibujo apoyado ahí.\nTe lo quedás mirando un rato. Está bueno.',
+];
+
+const MESA_COMIO = [
+  '🍽️ La mesa de la cocina\n\nHay migas y un plato sin lavar.\nParece que alguien comió acá hace un rato.',
+  '🍽️ La mesa de la cocina\n\nUna taza todavía tibia y unas migas al costado.\nAlguien pasó por acá.',
+];
+
+let mesaIdx = 0;
+
+function accionMesa() {
+  // Sin haber comido no hay migas que valgan: eso lo notaría enseguida.
+  const cola = hechoHoy('comer') > 0 ? [...MESA_COMIO, ...MESA_DIBUJO] : MESA_DIBUJO;
+  dialogo([{ t: cola[mesaIdx++ % cola.length] }]);
+}
+
+/* El inodoro tampoco da misión: es un chiste con premio. La gracia es que se
+   llega de casualidad, buscando otra cosa, y lo que devuelve no es un chiste
+   de baño. Es una sola frase a propósito — con varias, la sorpresa se gasta. */
+function accionInodoro() {
+  dialogo([{
+    t: `🚽 El inodoro\n\nBrilla tanto que te ves reflejada.\nY ya que estamos: estás hermosa, ${CONFIG.jugadora}.`,
+  }]);
+}
+
+/* El espejo del baño. Ninguna frase nombra a nadie ni viene firmada: no es
+   alguien diciéndole que está linda, es ella mirándose.
+
+   El emoji del espejo es el de las chispas y NO el de un espejo de verdad
+   (U+1FA9E): ese es de Emoji 13 y la fuente de emojis de Windows 10 no lo
+   trae, así que sale un cuadrado. Es el mismo bloque U+1FA70..U+1FAFF que ya
+   se comió tres emojis del juego (ver docs/deuda-tecnica.md). Los codepoints
+   van escritos y no dibujados a propósito: son justamente los que no se ven.
+   El smoke tiene un paso que revisa el bloque entero, así que no hace falta
+   acordarse: si alguien mete uno nuevo de ahí, falla.
+
+   Hoy hay una sola, y la lista queda igual: para sumar más con el tiempo
+   alcanza con escribirlas acá abajo. Rotan solas, sin tocar nada más. */
+const ESPEJO = [
+  `✨ El espejo\n\nTe quedás mirándote.\nEsa sonrisa. Esos ojos.\nTu carita es una obra de arte.`,
+];
+
+let espejoIdx = 0;
+
+function accionEspejo() {
+  dialogo([{ t: ESPEJO[espejoIdx++ % ESPEJO.length] }]);
 }
 
 function accionCartel() {

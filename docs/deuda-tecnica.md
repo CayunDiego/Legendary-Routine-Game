@@ -281,4 +281,19 @@ Todo lo visual se verificó a mano hasta ahora. Eso no escala: los dos bugs de l
 
 - **`empezar()` peleaba con `TituloScreen`** (2026-08-15). Hacía `$('titulo').classList.add('oculto')` y `style.display='none'` a mano, cosas que el componente ya maneja mirando el modo. El `display:none` imperativo era lo peor: React no lo conoce y no lo puede limpiar.
 - **`hooks/useDialogo.js` estaba muerto** (2026-08-15). Se creó para cumplir el plan y `Dialogo.jsx` no lo usaba — hablaba con el store directo. Ahora sí lo usa.
-- **Emojis rotos en Windows** (2026-08-15). 🪙 `U+1FA99`, 🪥 `U+1FAA5` y 🪧 `U+1FAA7` son Emoji 12-14 y `seguiemj.ttf` de Windows 10 no los tiene. Reemplazados por 💰 🦷 🏠, verificados contra la tabla de caracteres de la fuente. Preexistente al refactor.
+- **Emojis rotos en Windows** (2026-08-15, reincidencia 2026-08-19). U+1FA99,
+  U+1FAA5 y U+1FAA7 son Emoji 12-14 y `seguiemj.ttf` de Windows 10 no los tiene:
+  salen como un cuadrado. Se reemplazaron por otros que la fuente sí trae,
+  verificados contra su tabla de caracteres. Preexistente al refactor.
+
+  **Volvió a pasar** con U+1FA9E (el espejo) al escribir el diálogo del espejo
+  del baño: el emoji obvio para un espejo es justo uno del bloque prohibido. Los
+  cuatro casos salen del mismo lado — U+1FA70..U+1FAFF, los emojis de 2019 en
+  adelante — así que ahora hay un paso de `smoke.mjs`, "emojis: ninguno del
+  bloque que Windows no dibuja", que recorre `src/` y falla si aparece
+  cualquiera de ese rango. No se puede probar una fuente desde node, pero sí
+  prohibir el bloque de donde salieron los cuatro.
+
+  Detalle que suena a chiste y no lo es: los codepoints se escriben, no se
+  pegan. Un comentario que explique el problema con los emojis dibujados hace
+  fallar al propio paso que lo cuida. Ya pasó.

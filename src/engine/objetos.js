@@ -32,10 +32,32 @@ const ART_OBJ = {
     [4, 14, 2, 2, '#dde4e8'], [10, 14, 2, 2, '#dde4e8']
   ]},
 
-  inodoro: { tw: 1, th: 1, r: [
-    [4, 1, 8, 6, '#eff4f6'], [4, 1, 8, 1, '#ffffff'], [10, 3, 1, 1, '#b9c2c9'],
-    [3, 8, 10, 6, '#f7fafb'], [5, 9, 6, 4, '#cfd8dd'], [3, 13, 10, 2, '#e3eaed']
+  /* El inodoro mide 2 casillas de alto y se apoya en la fila de pared de arriba
+     del bano (y=2), igual que los muebles altos del living: asi entra la
+     mochila entera arriba y la taza abajo, sin gastar una casilla de piso.
+     Antes era 1 x 1 y los dos tenian que caber en 16 px: la mochila quedaba en
+     6 px de alto y se leia como una cajita apoyada sobre otra cajita.
+
+     La taza va en ovalos concentricos —loza, tapa, hueco— porque es lo unico
+     redondo del bano y en cuadrados no se distingue del lavabo. */
+  inodoro: { tw: 1, th: 2, r: [
+    // mochila, contra la pared
+    [3, 2, 10, 2, '#ffffff'],
+    [3, 4, 10, 11, '#eff4f6'], [3, 4, 10, 1, '#ffffff'],
+    [3, 4, 1, 11, '#ffffff'], [12, 4, 1, 11, '#cfd8dd'],
+    [6, 7, 4, 3, '#c3ced5'], [6, 7, 4, 1, '#dfe7eb'],   // boton de la cadena
+    [3, 15, 10, 1, '#b9c2c9'],
+    // el cuello que baja de la mochila a la taza
+    [5, 16, 6, 4, '#e3eaed'], [5, 16, 1, 4, '#f7fafb'],
+    // taza
+    ...oval(8, 24, 7, 6, '#f7fafb'),
+    ...oval(8, 24, 6, 5, '#ffffff'),
+    ...oval(8, 24, 4, 3, '#cfd8dd'),
+    ...oval(8, 24, 3, 2, '#aeb9c0'),
+    // pie y sombra de apoyo
+    [5, 29, 6, 3, '#e3eaed'], [5, 31, 6, 1, '#b9c2c9'],
   ]},
+
 
   toalla: { tw: 1, th: 1, r: [
     [1, 2, 14, 1, '#aeb5ba'],
@@ -221,6 +243,97 @@ const ART_OBJ = {
     [7, 9, 2, 7, '#8b5e3c'],
     [1, 2, 14, 8, '#c99b52'], [1, 2, 14, 1, '#e0b268'], [1, 9, 14, 1, '#a67f3f'],
     [3, 4, 10, 1, '#6b4526'], [3, 6, 8, 1, '#6b4526'], [3, 8, 6, 1, '#6b4526']
+  ]},
+
+  /* Espejo colgado en la pared del baño. Va en ovalos y no en un rectangulo
+     para que no se confunda con el cuadro del dormitorio, que a 16 px es el
+     mismo marco con otro relleno. */
+  espejo: { tw: 1, th: 1, r: [
+    ...oval(8, 8, 6, 7, '#c9a05a'),
+    ...oval(8, 8, 5, 6, '#e8c887'),
+    ...oval(8, 8, 4, 5, '#bcd8e6'),
+    ...oval(8, 8, 3, 4, '#d7ebf4'),
+    [5, 4, 2, 5, '#f4fbff'], [8, 11, 1, 2, '#f4fbff'],
+  ]},
+
+  /* --- muebles del living --------------------------------------------------
+     Estos tres miden 2 casillas de alto y se apoyan en la fila de PARED que
+     tiene el cuarto arriba (y=9). Eso los hace verse altos —de pie contra la
+     pared, como los muebles de verdad— sin gastar una sola casilla de piso:
+     la de arriba ya era pared y ya era solida.
+
+     Es la diferencia entre un cuarto amoblado y una fila de cajitas de 16 px.
+     Ojo con dos cosas si se agrega otro: no puede caer sobre una puerta de la
+     fila 9 (x=8 y x=11 en esta casa; el smoke lo verifica) y el arte se dibuja
+     desde la esquina de arriba a la izquierda, o sea desde la pared. */
+  bibliotecaAlta: { tw: 1, th: 2, r: [
+    [0, 0, 16, 32, '#6b4526'], [1, 1, 14, 30, '#8b5e3c'],
+    [1, 1, 14, 1, '#a06a42'],
+    // cuatro huecos oscuros, y entre medio los estantes
+    ...[2, 10, 18, 26].map((y) => [2, y, 12, 6, '#5a3a20']),
+    ...[8, 16, 24].map((y) => [1, y, 14, 2, '#a06a42']),
+    // libros: cada hueco con su propia mezcla, para que no se repita el patron
+    [3, 3, 2, 5, '#c9526b'], [5, 2, 1, 6, '#f2c14e'], [6, 3, 2, 5, '#4f8fc9'],
+    [9, 2, 1, 6, '#7ed957'], [10, 3, 2, 5, '#e0a020'], [12, 2, 2, 6, '#9a6fd0'],
+    [3, 11, 1, 5, '#4f8fc9'], [4, 12, 2, 4, '#c9526b'], [7, 11, 2, 5, '#f2c14e'],
+    [9, 12, 1, 4, '#7ed957'], [10, 11, 2, 5, '#e0687f'], [12, 12, 2, 4, '#4fa3c7'],
+    [3, 19, 2, 5, '#9a6fd0'], [6, 20, 1, 4, '#f2c14e'], [8, 19, 2, 5, '#c9526b'],
+    [11, 20, 2, 4, '#4f8fc9'],
+    // el estante de abajo va mas suelto: adornos, no libros
+    ...circ(5, 29, 2, '#7ed957'), [4, 28, 1, 1, '#f6efe2'],
+    [9, 27, 4, 4, '#e0687f'], [9, 27, 4, 1, '#f4a3bf'],
+  ]},
+
+  /* La campana sube por la pared y la repisa sobresale a los costados, que es
+     lo que la separa de "una caja con fuego". El fuego lleva tres tonos de
+     naranja, de afuera hacia adentro cada vez mas claro: con uno solo se lee
+     como una mancha y no como llama. */
+  chimenea: { tw: 2, th: 2, r: [
+    [5, 0, 22, 14, '#7a5a4a'], [5, 0, 22, 1, '#96705c'],          // campana
+    [5, 0, 1, 14, '#96705c'], [26, 0, 1, 14, '#5c4436'],
+    [5, 5, 22, 1, '#5c4436'], [5, 10, 22, 1, '#5c4436'],
+    [13, 1, 1, 4, '#5c4436'], [19, 6, 1, 4, '#5c4436'],
+    [0, 13, 32, 5, '#a3826b'], [0, 13, 32, 1, '#c0a08a'],         // repisa
+    [0, 17, 32, 1, '#7a624f'],
+    [1, 18, 30, 14, '#7a5a4a'], [1, 18, 30, 1, '#96705c'],        // cuerpo
+    [1, 18, 1, 14, '#96705c'], [30, 18, 1, 14, '#5c4436'],
+    [1, 23, 30, 1, '#5c4436'], [1, 28, 30, 1, '#5c4436'],
+    [4, 19, 1, 4, '#5c4436'], [27, 24, 1, 4, '#5c4436'],
+    [8, 20, 16, 12, '#2b2119'],                                    // boca del hogar
+    [10, 25, 12, 7, '#e8622a'],                                    // fuego
+    [12, 23, 8, 9, '#f7a02a'],
+    [14, 26, 4, 6, '#ffe08a'],
+    [9, 30, 14, 2, '#6b4526'], [11, 31, 10, 1, '#4a2f1c'],         // lena
+  ]},
+
+  lampara: { tw: 1, th: 2, r: [
+    [2, 4, 12, 8, '#f2d98c'], [2, 4, 12, 1, '#fff3c4'],            // pantalla
+    [3, 3, 10, 1, '#d9b45c'], [2, 11, 12, 1, '#d9b45c'],
+    [7, 12, 2, 17, '#7a6a5a'], [7, 12, 1, 17, '#8f7f6f'],          // pie
+    [5, 29, 6, 3, '#5a4a3a'], [5, 29, 6, 1, '#7a6a5a'],            // base
+  ]},
+
+  mesaRatona: { tw: 1, th: 1, r: [
+    [1, 6, 14, 3, '#c98f5a'], [1, 6, 14, 1, '#dda86f'],
+    [1, 9, 14, 1, '#8b5e3c'],
+    [3, 10, 2, 5, '#8b5e3c'], [11, 10, 2, 5, '#8b5e3c'],
+    [5, 2, 6, 4, '#f6efe2'], [5, 2, 6, 1, '#ffffff'],             // un libro apoyado
+    [5, 4, 6, 1, '#c9526b'],
+  ]},
+
+  /* La alfombra del living: 6 x 2, plana (decor) y con el mismo esqueleto que
+     alfombraGrande —pano, luces, campo interior, puntitos— pero en rosa viejo.
+     No es capricho de color: el piso de madera es #cfa471, un tostado calido,
+     y una alfombra en la misma familia desaparece contra el piso. */
+  alfombraLiving: { tw: 6, th: 2, decor: true, r: [
+    [2, 2, 92, 28, '#b5546b'],
+    [2, 2, 92, 2, '#cf6d84'], [2, 28, 92, 2, '#8f3f53'],
+    [2, 2, 2, 28, '#cf6d84'], [92, 2, 2, 28, '#8f3f53'],
+    [6, 6, 84, 20, '#c25f77'],
+    [6, 6, 84, 1, '#d67d92'],
+    ...[14, 30, 46, 62, 78].flatMap(x =>
+      [11, 21].map(y => [x, y, 3, 3, '#f6e3c8'])),
+    ...[22, 38, 54, 70].map(x => [x, 16, 2, 2, '#f6e3c8']),
   ]},
 
   /* Diego: ocupa 1 casilla y es solido. No lleva arte por codigo — el motor lo

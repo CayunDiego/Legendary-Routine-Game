@@ -15,10 +15,10 @@ const MAPA = [
   'FG#,,,,,,,,,#TTTTTT#GGGF', // 6
   'FG####D########D####GGGF', // 7   puertas del dormitorio y del baño
   'FG#................#GGGF', // 8   pasillo
-  'FG#######D#D########GGGF', // 9   puertas de la cocina y del living
-  'FG#KKKKKKK#........#GGGF', // 10  cocina | living
-  'FG#KKKKKKK#........#GGGF', // 11
-  'FG#KKKKKKK#........#GGGF', // 12
+  'FG######D##D########GGGF', // 9   puertas de la cocina y del living
+  'FG#KKKKKK#.........#GGGF', // 10  cocina | living
+  'FG#KKKKKK#.........#GGGF', // 11
+  'FG#KKKKKK#.........#GGGF', // 12
   'FG###D########D#####GGGF', // 13  dos puertas al jardín
   'FGGGGPGGGGGGGGPGGGGGGGGF', // 14  jardín
   'FGGGGPGGGGGGGGPGGGGGGGGF', // 15
@@ -35,6 +35,7 @@ const SOLIDOS = new Set(['F', '#', '~']);
  *  OBJETOS DEL MUNDO
  *  x,y en tiles. art = clave en ART_OBJ. mision = id de MISIONES.
  *  accion = 'mision' | 'animo' | 'premios' | 'carta' | 'companero' | 'info'
+ *           | 'mesa' | 'inodoro' | 'espejo'
  * -------------------------------------------------------------------------*/
 const TODOS_LOS_OBJETOS = [
   // --- Dormitorio ---
@@ -54,7 +55,12 @@ const TODOS_LOS_OBJETOS = [
   // --- Baño ---
   { x:13, y:3,  art:'ducha',     accion:'mision', mision:'ducha' },
   { x:15, y:3,  art:'lavabo',    accion:'mision', mision:'dientes' },
-  { x:17, y:3,  art:'inodoro',   solido:true },
+  // 2 de alto: la mochila va sobre la pared. Habla: ver accionInodoro().
+  { x:17, y:2,  art:'inodoro',   accion:'inodoro' },
+  // Colgado en la pared, al lado del lavabo. Va en (16,2) y no en (15,2)
+  // —justo encima de la pileta, que seria lo natural— porque para tocarlo hay
+  // que poder pararse abajo, y abajo de (15,2) esta el lavabo, que es solido.
+  { x:16, y:2,  art:'espejo',    accion:'espejo', pared:true },
   { x:18, y:5,  art:'toalla',    solido:true },
 
   // --- Cocina (todo apoyado contra la pared de arriba) ---
@@ -63,18 +69,47 @@ const TODOS_LOS_OBJETOS = [
   { x:5,  y:10, art:'cocina',    accion:'mision', mision:'comer' },
   { x:6,  y:10, art:'mesada',    solido:true },
   { x:7,  y:10, art:'lavarropas',accion:'mision', mision:'ropa' },
-  { x:7,  y:12, art:'mesa',      solido:true },
+  // La mesa no da misión: habla. Ver accionMesa() en game/juego.js.
+  { x:7,  y:12, art:'mesa',      accion:'mesa' },
 
-  // --- Living ---
-  { x:12, y:10, art:'tv',        solido:true },
+  /* --- Living ---
+     Amoblado como una sala de verdad y no como un depósito: todo lo alto
+     contra la pared de arriba, los dos sillones enfrentados a la chimenea con
+     la mesa ratona en el medio, y la alfombra abajo de todo eso.
+
+     La fila y=11 queda ENTERA libre a propósito: es el único pasillo del
+     cuarto. Con las filas 10 y 12 ocupadas, cualquier cosa que se ponga en la
+     11 —Diego incluido— parte el living en dos y deja muebles inalcanzables.
+     Por eso Diego bajó a y=12: antes estaba en (15,11), en el medio del paso.
+
+     Y la casilla (14,12) tiene que quedar libre: justo abajo está la puerta al
+     jardín (14,13). Un sillón ahí no rompe nada que se note —al jardín se
+     puede seguir saliendo por la cocina— pero deja al living sin salida
+     propia, que es peor: se ve bien y anda mal.
+
+     La biblioteca, la chimenea y la lámpara van apoyadas en y=9, que es la
+     fila de PARED: miden 2 casillas de alto y así se ven de pie contra la
+     pared sin gastar piso, porque la casilla de arriba ya era pared y ya era
+     sólida. Lo que NO se puede es taparle una puerta a esa fila (x=8 y x=11);
+     el smoke lo verifica.
+
+     El puesto de premios se quedó donde estaba, en (16,10). */
+  { x:11, y:11, art:'alfombraLiving', decor:true },
+  { x:10, y:9,  art:'bibliotecaAlta', solido:true },
+  { x:12, y:9,  art:'chimenea',  solido:true },
+  { x:14, y:10, art:'cuadro',    pared:true },   // decorativo: la carta es la del cuarto
+  { x:15, y:10, art:'tv',        solido:true },
   { x:16, y:10, art:'tienda',    accion:'premios' },
-  { x:18, y:10, art:'planta',    solido:true },
-  { x:12, y:12, art:'sofa',      solido:true },
-  { x:17, y:12, art:'planta',    solido:true },
+  { x:17, y:10, art:'planta',    solido:true },
+  { x:18, y:9,  art:'lampara',   solido:true },
+  { x:11, y:12, art:'sofa',      solido:true },
+  { x:13, y:12, art:'mesaRatona',solido:true },
+  { x:15, y:12, art:'sofa',      solido:true },   // en 14 tapaba la puerta al jardin
+  { x:18, y:12, art:'planta',    solido:true },
   // Diego: personaje, no objeto. El motor lo dibuja recortando cuadros de su
   // hoja (24x32 x3), igual que a la jugadora, y se da vuelta cuando ella se
-  // acerca. Va al lado del puesto de premios, que es el que el cumple.
-  { x:15, y:11, art:'diego',     accion:'diego', personaje:true, dir:0, flag:'diego' },
+  // acerca. Cerca del puesto de premios, que es el que él cumple.
+  { x:17, y:12, art:'diego',     accion:'diego', personaje:true, dir:0, flag:'diego' },
 
   // --- Jardín ---
   { x:2,  y:16, art:'reposera',  accion:'mision', mision:'sol' },
