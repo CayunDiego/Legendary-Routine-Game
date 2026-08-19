@@ -27,6 +27,30 @@ pasa a ser una tarea normal, no necesita estar acá.
 
 ## Hechas
 
+- **2026-08-19 — Moño de Hello Kitty (cuarto disfraz).** Aparece en el césped
+  como los otros tres: entrada en `config/disfraces.js` y arte por dirección
+  en `engine/disfraces.js`, sin hoja de sprites nueva. Rojo, ladeado, con el
+  nudo cruzado en el medio y el hueco de cada lazo en rojo oscuro — sin ese
+  hueco queda una mancha roja con forma rara en vez de cinta atada.
+
+  Es el primer accesorio de cabeza que va en la capa **`adelante`** y no
+  `atras`. Los otros dos van detrás a propósito (el afro les tapa la base y
+  se leen como que salen de atrás, ver la nota de 2026-08-17), pero un moño
+  se apoya *sobre* el pelo: dibujado detrás, el afro se lo come entero.
+
+  El moño va siempre del mismo lado de la cabeza —el izquierdo de Kath— y eso
+  obliga a **espejarlo en dos de las cuatro direcciones**: de frente y de
+  perfil izquierdo se ve por el lado de adelante, de espaldas y de perfil
+  derecho se ve por detrás, y visto por detrás la inclinación se da vuelta.
+  Sin el espejo, al girar parecía que el moño saltaba de lado.
+
+  Las cuatro posiciones se ajustaron mirando el sprite de verdad, no a ojo:
+  un script que vuelca `kath_hoja.png` a ASCII y le compone el arte encima.
+  La cabeza no arranca a la misma altura en las cuatro filas de la hoja (y=2
+  de frente, y=3 de perfil izquierdo, y=4 de perfil derecho y de espaldas),
+  así que las cuatro anclas son distintas; con una sola el moño queda
+  flotando en el aire en dos de ellas.
+
 - **2026-08-17 — Disfraces coleccionables.** Tres accesorios (orejas de Skre,
   antenitas de abeja, capa de superheroína) que aparecen solos caminando por
   el césped y se guardan en el placard del cuarto, con su pestaña en el menú.

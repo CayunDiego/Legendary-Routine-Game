@@ -815,8 +815,10 @@ function dibujarJugadora() {
     const p = jugadora.t / MOV_MS;
     f = p < 0.5 ? (jugadora.paso ? 3 : 1) : (jugadora.paso ? 2 : 0);
   }
-  // El accesorio se parte en dos: lo que va detrás (la capa asomando por los
-  // costados) antes del sprite, y lo que va delante (orejas, antenas) después.
+  // El accesorio se parte en dos: lo que va detrás (orejas y antenas, que el
+  // pelo tiene que taparles la base, y la capa asomando por los costados)
+  // antes del sprite, y lo que va delante (el moño, que se apoya SOBRE el
+  // pelo, y la capa vista de espaldas) después.
   const disfraz = SPR_DISFRAZ[juego.estado().disfrazPuesto];
   const capas = disfraz ? disfraz[fila] : null;
   if (capas && capas.atras) dibujarCapaDisfraz(capas.atras, dx, dy);

@@ -27,6 +27,13 @@ const DISFRACES = [
     hallazgo: 'Dos bolitas amarillas brillan en el césped...',
   },
   {
+    id: 'mono',
+    nombre: 'Moño de Hello Kitty',
+    icono: '🎀',
+    desc: 'Rojo, enorme y ladeado. Igualito al de ella.',
+    hallazgo: 'Hay una cinta roja enredada en el pasto...',
+  },
+  {
     id: 'capa',
     nombre: 'Capa de superheroína',
     icono: '🦸',
