@@ -1,5 +1,5 @@
 import { MAPA, SOLIDOS, OBJETOS, INICIO } from '../config/mapa.js';
-import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO, SPRITE_MERLI, SPRITE_HUEVO, SPRITE_COMPANERO } from '../config/sprites.js';
+import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO, SPRITE_DIEGO_BAILE, SPRITE_MERLI, SPRITE_HUEVO, SPRITE_COMPANERO } from '../config/sprites.js';
 import { FLAGS } from '../config/flags.js';
 import { KATH, MERLI, COMPANERO_ANIM, HUEVO_IDLE, HUEVO_HATCH } from '../config/recortes.js';
 import { dentroDeZonaMerli, pesoTileMerli } from '../config/merli.js';
@@ -53,6 +53,7 @@ let cv, ctx, vpW = 0, vpH = 0, dpr = 1;
 let hojaSprite = null;              // sprite sheet de la jugadora
 let hojaBaile = null;               // hoja del baile (mismo formato que la de caminar)
 let hojaDiego = null;               // sprite sheet de Diego (mismo formato)
+let hojaDiegoBaile = null;          // el baile de Diego (misma grilla que el de Kath)
 let hojaMerli = null;               // hoja de Merlí (ver config/sprites.js)
 let hojaHuevo = null;                // hoja del huevo (ver config/sprites.js)
 let hojaCompanero = null;            // hoja del compañero (ver config/sprites.js)
@@ -635,6 +636,91 @@ function dibujar(dt) {
   aplicarLuzAmbiente();
 }
 
+/* Hasta dónde un personaje sigue a Kath con la mirada: tres casillas, o sea
+   cuando ya está cerca. Más lejos se queda mirando adonde lo dejó el mapa.
+
+   Estuvo en ocho —casi toda la pantalla— mientras buscábamos por qué Diego
+   parecía no girar nunca. No era el radio: era que su hoja de sprites tenía las
+   dos poses de perfil mirando a la izquierda, y que estaba puesto mirando justo
+   para donde iba a girar. Arreglado eso, tres casillas alcanza y sobra, y
+   además es lo que se quiere: que te mire cuando te acercás, no que te siga con
+   los ojos desde la otra punta del jardín. */
+const RADIO_MIRADA = 3 * TILE;
+
+/* Hacia dónde tiene que mirar un personaje del mapa para tener a Kath de frente.
+
+   Se mide contra su posición en píxeles y no contra `tx/ty`: esas dos son la
+   casilla a la que ella VA, así que un personaje que mirara la casilla se daba
+   vuelta un paso tarde —y al arrancar el paso siguiente, antes de tiempo—. Con
+   la posición real gira mientras ella camina, que es lo que se ve natural.
+
+   Manda el eje más largo. Cuando ella le habla está pegada y de frente, así que
+   uno de los dos ejes vale 0 y no hay empate posible; los empates son de lejos
+   y en diagonal exacta, y ahí se elige la vertical, que es la que más se nota
+   (el sprite cambia de frente a espaldas, no de perfil a perfil). */
+function dirHaciaJugadora(o) {
+  // Sin Kath cerca manda el ocio (actualizarPersonajes). Si nadie lo movio
+  // todavia, la pose que le puso el mapa.
+  const puesta = o.dirOcio === undefined ? (o.dir || 0) : o.dirOcio;
+  const dx = jugadora.px - o.x * TILE;
+  const dy = jugadora.py - o.y * TILE;
+  if (Math.hypot(dx, dy) > RADIO_MIRADA) return puesta;
+  if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 2 : 1;
+  if (dy !== 0) return dy > 0 ? 0 : 3;
+  return puesta;
+}
+
+/* Cuanto se queda mirando para un lado antes de girar a otro, esperando solo.
+   Sortear el rato ademas de la direccion es lo que lo saca de parecer un
+   metronomo: con un intervalo fijo se nota el reloj enseguida. */
+const OCIO_MIN_MS = 1600;
+const OCIO_MAX_MS = 4200;
+
+/* Los personajes del mapa (por ahora Diego) miran para todos lados mientras
+   esperan. No es adorno: un monigote clavado en una pose parece un cartel, y
+   dos giros de vez en cuando alcanzan para que se lea como alguien parado
+   afuera.
+
+   Con Kath cerca esto no corre: ahi manda mirarla a ella, y el reloj del ocio
+   se reinicia para que al irse ella no gire de golpe en el mismo frame. */
+function actualizarPersonajes(dt) {
+  if (!juego.juegoActivo()) {
+    for (const o of OBJETOS) if (o.personaje) o.bailando = false;
+    return;
+  }
+  for (const o of OBJETOS) {
+    if (!o.personaje || o.oculto) continue;
+
+    const cerca = Math.hypot(jugadora.px - o.x * TILE, jugadora.py - o.y * TILE) <= RADIO_MIRADA;
+
+    /* Si Kath se pone a bailar al lado, se prende. Le copia la coreografía y el
+       reloj, corridos un cuadro: bailan lo mismo pero él va atrás, como quien
+       se suma a algo que ya empezó. Con los dos exactamente en fase parecen dos
+       copias de la misma animación, que es justo lo que no se quiere. */
+    o.bailando = cerca && jugadora.bailando;
+    if (o.bailando) {
+      o.baileCoreo = jugadora.baileCoreo;
+      o.tBaile = Math.max(0, jugadora.tBaile - BAILE.cuadroMs);
+    }
+
+    if (cerca) { o.tOcio = OCIO_MIN_MS; continue; }
+
+    o.tOcio = (o.tOcio === undefined ? sorteoOcio() : o.tOcio) - dt;
+    if (o.tOcio > 0) continue;
+    o.tOcio = sorteoOcio();
+    // Siempre a una direccion distinta de la que ya tiene: sortear entre las
+    // cuatro deja que salga la misma y el giro no pasa, que desde afuera se ve
+    // igual que si el sorteo estuviera roto.
+    const actual = o.dirOcio === undefined ? (o.dir || 0) : o.dirOcio;
+    const otras = [0, 1, 2, 3].filter((d) => d !== actual);
+    o.dirOcio = otras[Math.floor(Math.random() * otras.length)];
+  }
+}
+
+function sorteoOcio() {
+  return OCIO_MIN_MS + Math.random() * (OCIO_MAX_MS - OCIO_MIN_MS);
+}
+
 /* Un personaje del mapa (por ahora Diego) usa la hoja de cuadros de 24x32 y la
    misma escala x3 que la jugadora, no el arte por codigo de los objetos. Si se
    dibujara con la ruta normal quedaria mas bajo y mas flaco parado al lado. */
@@ -649,13 +735,17 @@ function dibujarPersonaje(hoja, o) {
   ctx.ellipse(Math.round(cx), Math.round(o.y * TILE - cam.y + TILE - 5), 15, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Se da vuelta hacia la jugadora cuando esta cerca.
-  let dir = o.dir || 0;
-  const ddx = jugadora.tx - o.x, ddy = jugadora.ty - o.y;
-  if (Math.abs(ddx) + Math.abs(ddy) <= 3) {
-    if (Math.abs(ddx) > Math.abs(ddy)) dir = ddx > 0 ? 2 : 1;
-    else if (ddy !== 0) dir = ddy > 0 ? 0 : 3;
+  // Bailando manda la coreografía: ella decide la fila y el cuadro, así que no
+  // hay que mirar hacia dónde está parada. Sin la hoja del baile cargada se
+  // sigue dibujando quieto, como cualquier otra cosa que no llegó.
+  if (o.bailando && hojaDiegoBaile) {
+    const paso = pasoBaile(o.baileCoreo || 0, o.tBaile || 0);
+    ctx.drawImage(hojaDiegoBaile, paso.col * FRAME_W, paso.fila * FRAME_H,
+      FRAME_W, FRAME_H, dx, dy, w, h);
+    return;
   }
+
+  const dir = dirHaciaJugadora(o);
 
   if (hoja) ctx.drawImage(hoja, 0, dir * FRAME_H, FRAME_W, FRAME_H, dx, dy, w, h);
 }
@@ -938,15 +1028,75 @@ function dibujarMerli() {
   ctx.drawImage(hojaMerli, f * MERLI_FRAME_W, merli.dir * MERLI_FRAME_H, MERLI_FRAME_W, MERLI_FRAME_H, dx, dy, w, h);
 }
 
-/* luz según la hora real: mañana cálida, tarde neutra, noche azulada */
+/* ---------------------------------------------------------------------------
+ *  DÍA Y NOCHE
+ *
+ *  La casa se oscurece y se aclara con la hora REAL del teléfono: si Kath juega
+ *  a las once de la noche, el jardín está de noche. No hay reloj propio del
+ *  juego ni un ciclo acelerado a propósito — la gracia es que el juego esté a
+ *  la misma hora que ella.
+ *
+ *  Antes esto eran cuatro baldes de color con saltos secos (a las 21:00 la casa
+ *  se apagaba de golpe). Ahora es una tabla de momentos del día y el color sale
+ *  interpolado entre los dos que rodean a la hora actual, así que el cambio es
+ *  continuo: a las 18:40 el atardecer ya empezó, apenas.
+ *
+ *  Los momentos van en horas con decimales (6.5 = 06:30) y la tabla cierra el
+ *  círculo: la última entrada es la hora 24, igual a la de la hora 0.
+ * ------------------------------------------------------------------------- */
+const LUZ = [
+  { h: 0,    r: 24,  g: 34,  b: 92,  a: 0.44 },   // noche cerrada
+  { h: 5,    r: 24,  g: 34,  b: 92,  a: 0.42 },
+  { h: 6.5,  r: 96,  g: 70,  b: 130, a: 0.30 },   // clarea, violeta
+  { h: 8,    r: 255, g: 198, b: 120, a: 0.13 },   // amanecer tibio
+  { h: 10,   r: 255, g: 255, b: 255, a: 0    },   // día pleno: sin tinte
+  { h: 17,   r: 255, g: 255, b: 255, a: 0    },
+  { h: 19,   r: 255, g: 146, b: 78,  a: 0.18 },   // atardecer
+  { h: 20.5, r: 132, g: 76,  b: 116, a: 0.32 },   // crepúsculo
+  { h: 22,   r: 24,  g: 34,  b: 92,  a: 0.44 },   // ya es de noche
+  { h: 24,   r: 24,  g: 34,  b: 92,  a: 0.44 },   // cierra el círculo con la 0
+];
+
+/* Adentro de la casa hay luz prendida, así que la noche pega menos. No es
+   realismo: es que si adentro estuviera igual de oscuro que el jardín, hacer
+   una misión a la noche sería jugar a oscuras.
+
+   Se mira la casilla donde está Kath y no la que se ve en pantalla: el tinte es
+   uno solo para todo el cuadro, y partirlo por zona sería iluminar por tile, que
+   es otro trabajo entero para algo que casi no se ve (la casa se ve casi
+   siempre completa). */
+const TECHADO = new Set(['#', ',', 'T', 'K', '.', 'D']);
+const LUZ_ADENTRO = 0.42;      // cuánto del tinte de afuera queda adentro
+
+function estaAdentro(tx, ty) {
+  const fila = MAPA[ty];
+  return !!fila && TECHADO.has(fila[tx]);
+}
+
+/* El color del ambiente a una hora dada. Separado del dibujo para poder
+   probarlo: recibe la fecha y si está bajo techo, y no toca el canvas. */
+function luzAmbiente(fecha, adentro) {
+  const d = fecha || new Date();
+  const h = d.getHours() + d.getMinutes() / 60;
+
+  let i = 0;
+  while (i < LUZ.length - 2 && LUZ[i + 1].h <= h) i++;
+  const a = LUZ[i], b = LUZ[i + 1];
+  const t = b.h === a.h ? 0 : (h - a.h) / (b.h - a.h);
+  const entre = (x, y) => x + (y - x) * t;
+
+  return {
+    r: Math.round(entre(a.r, b.r)),
+    g: Math.round(entre(a.g, b.g)),
+    b: Math.round(entre(a.b, b.b)),
+    a: entre(a.a, b.a) * (adentro ? LUZ_ADENTRO : 1),
+  };
+}
+
 function aplicarLuzAmbiente() {
-  const h = new Date().getHours();
-  let col = null;
-  if (h >= 21 || h < 6) col = 'rgba(30,40,90,0.34)';
-  else if (h >= 19) col = 'rgba(255,140,80,0.16)';
-  else if (h < 8) col = 'rgba(255,200,120,0.12)';
-  if (!col) return;
-  ctx.fillStyle = col;
+  const luz = luzAmbiente(null, estaAdentro(jugadora.tx, jugadora.ty));
+  if (luz.a < 0.01) return;                       // mediodía: no se pinta nada
+  ctx.fillStyle = `rgba(${luz.r},${luz.g},${luz.b},${luz.a.toFixed(3)})`;
   ctx.fillRect(0, 0, vpW, vpH);
 }
 
@@ -966,11 +1116,13 @@ function cargarSprite(listo) {
     cargarImagen(SPRITE_BAILE),
     cargarImagen(VIDEO_TELE),
     FLAGS.diego ? cargarImagen(SPRITE_DIEGO) : Promise.resolve(null),
+    FLAGS.diego ? cargarImagen(SPRITE_DIEGO_BAILE) : Promise.resolve(null),
     cargarImagen(SPRITE_MERLI),
     cargarImagen(SPRITE_HUEVO),
     cargarImagen(SPRITE_COMPANERO),
-  ]).then(([sp, bl, tv, dg, mr, hv, cp]) => {
-    hojaSprite = sp; hojaBaile = bl; hojaTele = tv; hojaDiego = dg; hojaMerli = mr; hojaHuevo = hv; hojaCompanero = cp;
+  ]).then(([sp, bl, tv, dg, dgb, mr, hv, cp]) => {
+    hojaSprite = sp; hojaBaile = bl; hojaTele = tv; hojaDiego = dg; hojaDiegoBaile = dgb;
+    hojaMerli = mr; hojaHuevo = hv; hojaCompanero = cp;
     construirBicho();
     listo();
   });
@@ -981,6 +1133,7 @@ function bucle(ts) {
   const dt = Math.min(50, ts - ultimo || 16);
   ultimo = ts;
   actualizarJugadora(dt);
+  actualizarPersonajes(dt);
   actualizarBicho(dt);
   actualizarMerli(dt);
   actualizarHuevo(dt);
@@ -1004,9 +1157,10 @@ function arrancarBucle() {
 export {
   conectar, montarCanvas, arrancarBucle, cargarSprite,
   jugadora, bicho, merli, input,
-  construirMundo, tilePasable, objetoFrente, objetoEnTile,
+  construirMundo, tilePasable, objetoFrente, objetoEnTile, dirHaciaJugadora,
   ajustarCanvas, actualizarCamara, actualizarJugadora, actualizarBicho, actualizarMerli,
+  actualizarPersonajes,
   actualizarAura, auraActiva, actualizarHuevo,
-  registrarCola, dibujar, bailar, BAILE,
+  registrarCola, dibujar, bailar, BAILE, luzAmbiente,
   animarEclosionHuevo,
 };

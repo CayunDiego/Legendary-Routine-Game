@@ -17,6 +17,7 @@ import datos from './recortes.json';
 export const KATH = datos.kath;
 export const BAILE = datos.baile;
 export const DIEGO = datos.diego;
+export const DIEGO_BAILE = datos.diego_baile;
 
 /* Merlí: misma idea pero con 10 cuadros por dirección, celda de 57 x 42, y se
    dibuja 1:1 (sin reescalar) para que quede nítido. */

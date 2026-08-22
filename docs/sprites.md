@@ -42,6 +42,7 @@ Con el nombre que ya tiene el personaje. Los nombres están en
 | Huevo | `arte-fuente/huevo_mascota.png` | filas de 10 cuadros |
 | Merlí | `arte-fuente/merli.png` | 10 cuadros x 4 direcciones |
 | Diego | `arte-fuente/diego.png` | 4 x 4, igual que Kath |
+| Baile de Diego | `arte-fuente/diego_baile.png` | 4 x 4, igual que el baile de Kath |
 
 No importa que la hoja venga enorme, con fondo gris o a cuadros, con filas de
 más o con los rótulos del generador ("ETAPA 1", "DERECHA", los números) quemados
@@ -154,6 +155,47 @@ regla que la imagen de revisión dibuja arriba de todo.
 
 El `"3"` es el número de fila contando desde 0 arriba de todo. Son 9 números
 para 10 cuadros (los cortes van entre cuadro y cuadro).
+
+### Quedó una reja de líneas finas encima de todo
+
+El damero del generador casi nunca viene con dos grises limpios: el borde entre
+cuadro y cuadro trae los tonos del medio (entre un 195 y un 243 aparece un 220),
+y esos no están en el marco de 1 px, así que la detección no los veía y
+sobrevivían como una reja encima del dibujo.
+
+Ya está resuelto solo: `quitar_fondo` ahora suma las mezclas entre los colores
+de fondo que encontró. Si aun así queda algo, subir `tolerancia`.
+
+Pariente de esto: una hoja grande que baja a la grilla del juego (la del baile
+de Diego venía de 1792 px a 96) promedia ~19 píxeles por píxel destino. El
+promedio se hace con el color **multiplicado por el alfa**, si no el gris que
+quedó "debajo" de lo transparente entra en la cuenta y deja un halo claro
+alrededor de cada dibujo.
+
+---
+
+### Una pose mira para el lado equivocado
+
+Pasó con Diego: el generador mandó las **dos** filas de perfil mirando a la
+izquierda. La fila estaba bien puesta y bien nombrada, pero el dibujo miraba al
+revés, así que en el juego Kath se le paraba a la derecha y él seguía mirando a
+la izquierda. Renombrar la fila no arregla nada —el problema es el dibujo— y
+darla vuelta a mano en el PNG se pierde en la próxima corrida del script.
+
+Para eso está `espejar`: las filas que hay que dar vuelta horizontalmente,
+por nombre.
+
+```json
+"orden": ["abajo", "izquierda", "derecha", "arriba"],
+"espejar": ["derecha"]
+```
+
+Se espeja cuadro por cuadro y no la fila entera, así que la caminata sigue yendo
+para adelante. Sólo en modo `grilla`.
+
+Cómo darse cuenta sin ojo de relojero: en la imagen de revisión, las dos poses
+de perfil de una fila y otra tienen que ser espejo una de la otra. Si las dos
+tienen la cara para el mismo lado, falta esto.
 
 ---
 

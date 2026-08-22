@@ -43,6 +43,49 @@ function fusionarHoy(a, b) {
   return out;
 }
 
+/* --- horas de las misiones de hoy ------------------------------------------ */
+/* No se mezclan las dos listas de un mismo id: se elige entera la del
+   dispositivo que hizo más veces esa misión. Intercalar las horas de los dos
+   armaría una tarde que no pasó en ningún lado (el teléfono tomó agua a las
+   9:00 y la tablet a las 9:05: no fueron dos vasos, fue el mismo mal
+   sincronizado). Ante el mismo largo gana la que empieza más temprano.
+
+   Después se recorta al contador ya fusionado. Puede quedar más corta que él
+   —una partida vieja no guardaba horas— y así se muestra: sin la hora. Lo que
+   no puede es sobrar. */
+function fusionarHoyEn(a, b, hoy) {
+  const out = {};
+  const A = a || {}, B = b || {};
+  for (const k of new Set([...Object.keys(A), ...Object.keys(B)])) {
+    const la = (A[k] || []).map(Number).filter(Boolean).sort((x, y) => x - y);
+    const lb = (B[k] || []).map(Number).filter(Boolean).sort((x, y) => x - y);
+    let elegida;
+    if (la.length !== lb.length) elegida = la.length > lb.length ? la : lb;
+    else elegida = (la[0] || Infinity) <= (lb[0] || Infinity) ? la : lb;
+    const tope = Number((hoy || {})[k]) || elegida.length;
+    if (elegida.length) out[k] = elegida.slice(0, tope);
+  }
+  return out;
+}
+
+/* --- misiones secundarias --------------------------------------------------- */
+/* Sólo crecen y cada una trae su `eid`, así que la unión es directa. Las de
+   antes del eid —no hay ninguna publicada, pero una copia a mano podría
+   traerlas— se distinguen por día + hora + texto, que es tan único como hace
+   falta: dos secundarias distintas del mismo día se escribieron en momentos
+   distintos. */
+function fusionarExtras(a, b) {
+  const porClave = new Map();
+  for (const x of [...(a || []), ...(b || [])]) {
+    if (!x || !x.texto) continue;
+    const k = x.eid || [x.dia, x.ts, x.texto].join('|');
+    if (!porClave.has(k)) porClave.set(k, x);
+  }
+  return [...porClave.values()]
+    .sort((x, y) => (Number(y.ts) || 0) - (Number(x.ts) || 0))
+    .slice(0, 200);   // el mismo tope que usa agregarExtra()
+}
+
 /* --- historial ------------------------------------------------------------ */
 /* Indexado por fecha, así que la unión es directa. Si los dos tienen el mismo
    día con distinto número, gana el mayor: uno de los dos no llegó a enterarse
@@ -158,6 +201,7 @@ function fusionar(a, b) {
   if (diaA === diaB) {
     out.dia = diaA || null;
     out.hoy = fusionarHoy(a.hoy, b.hoy);
+    out.hoyEn = fusionarHoyEn(a.hoyEn, b.hoyEn, out.hoy);
     out.animoHoy = ultimo.animoHoy || viejo.animoHoy || null;
     out.cartaVista = !!(a.cartaVista || b.cartaVista);
   } else {
@@ -167,6 +211,7 @@ function fusionar(a, b) {
     const otro = nuevoDia === a ? b : a;
     out.dia = nuevoDia.dia || null;
     out.hoy = { ...(nuevoDia.hoy || {}) };
+    out.hoyEn = { ...(nuevoDia.hoyEn || {}) };
     out.animoHoy = nuevoDia.animoHoy || null;
     out.cartaVista = !!nuevoDia.cartaVista;
     out.cartaIdx = typeof nuevoDia.cartaIdx === 'number' ? nuevoDia.cartaIdx : -1;
@@ -176,6 +221,9 @@ function fusionar(a, b) {
   }
 
   out.historial = fusionarHistorial(a.historial, b.historial, arrastrados);
+  // Las secundarias no se archivan al cambiar el día: se unen siempre, sin
+  // importar en qué día esté cada dispositivo.
+  out.extras = fusionarExtras(a.extras, b.extras);
 
   // --- oro: no se puede tomar el máximo -------------------------------------
   // El oro baja al canjear, así que el número en sí no dice quién está más
@@ -198,4 +246,7 @@ function fusionar(a, b) {
   return out;
 }
 
-export { fusionar, fusionarHoy, fusionarHistorial, fusionarCanjeados, contarHechas };
+export {
+  fusionar, fusionarHoy, fusionarHoyEn, fusionarExtras,
+  fusionarHistorial, fusionarCanjeados, contarHechas,
+};

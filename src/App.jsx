@@ -8,6 +8,7 @@ import Escena from './components/Escena.jsx';
 import Controles from './components/Controles.jsx';
 import AyudaTeclas from './components/AyudaTeclas.jsx';
 import Menu from './components/Menu/Menu.jsx';
+import ModalExtra from './components/ModalExtra.jsx';
 
 /* ---------------------------------------------------------------------------
  *  Orden de arranque, que es lo único delicado acá:
@@ -36,6 +37,7 @@ function Juego() {
       <Controles onA={pulsarA} onB={pulsarB} />
       <AyudaTeclas />
       <Menu />
+      <ModalExtra />
     </div>
   );
 }

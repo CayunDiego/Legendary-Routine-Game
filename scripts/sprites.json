@@ -16,6 +16,10 @@
     "           modo bloques va una entrada por bloque; null = fila que no se usa.",
     "  fondo    'auto' saca el fondo mirando el marco de la imagen (damero gris,",
     "           gris plano). Si la hoja ya viene transparente, no hace nada.",
+    "  espejar  (solo grilla) filas que hay que dar vuelta horizontalmente, por",
+    "           nombre. Para cuando el generador manda una pose mirando para el",
+    "           lado equivocado. Se espeja cuadro por cuadro, asi que la",
+    "           caminata sigue yendo para adelante.",
     "  cortes   salida de emergencia para una fila donde los cuadros se pisan y no",
     "           queda hueco donde cortar: las columnas del corte, leidas de la",
     "           regla que dibuja la imagen de revision. La clave es el numero de",
@@ -115,6 +119,21 @@
     "filas": 4,
     "celda": [24, 32],
     "fondo": "auto",
-    "orden": ["abajo", "izquierda", "derecha", "arriba"]
+    "orden": ["abajo", "izquierda", "derecha", "arriba"],
+    "espejar": ["derecha"],
+    "nota": "La hoja vino con las DOS filas de perfil mirando a la izquierda, asi que la fila derecha se espeja aca. Se nota enseguida jugando: Kath se le para a la derecha y el mira para el otro lado."
+  },
+
+  "diego_baile": {
+    "fuente": "diego_baile.png",
+    "salida": "diego_baile.png",
+    "coords": "diego_baile",
+    "modo": "grilla",
+    "columnas": 4,
+    "filas": 4,
+    "celda": [24, 32],
+    "fondo": "auto",
+    "orden": ["abajo", "izquierda", "derecha", "arriba"],
+    "nota": "El baile de Diego: misma grilla y mismas coreografias que el de Kath (motor.js#BAILE_COREOS), asi que los cuadros se intercambian uno por uno."
   }
 }

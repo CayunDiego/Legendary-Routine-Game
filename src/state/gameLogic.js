@@ -4,6 +4,7 @@ import { PREMIOS } from '../config/premios.js';
 import { CARTAS } from '../config/cartas.js';
 import { COMPANERO } from '../config/companero.js';
 import { DISFRACES, PASOS_POR_HALLAZGO } from '../config/disfraces.js';
+import { EXTRA } from '../config/extras.js';
 import { crearStore } from './store.js';
 import { xpNecesaria } from './niveles.js';
 import * as disco from './persistencia.js';
@@ -22,7 +23,7 @@ const CLAVE_GUARDADO = disco.CLAVE;
 
 /* Versión del formato de la partida. Si sube, hace falta una migración en
    MIGRACIONES que lleve de la anterior a esta. */
-const V_ACTUAL = 2;
+const V_ACTUAL = 3;
 
 const EST_INICIAL = () => ({
   v: V_ACTUAL,
@@ -36,6 +37,10 @@ const EST_INICIAL = () => ({
   diasCompletos: 0,
   totalMisiones: 0,
   hoy: {},
+  // Cuándo se completó cada vez de cada misión de hoy: { cama:[ts], agua:[ts,ts] }.
+  // Va al lado de `hoy` y no adentro para no cambiarle el formato al contador
+  // de siempre, que ya leen la fusión, el guardado y las copias viejas.
+  hoyEn: {},
   animoHoy: null,
   historial: [],          // [{d:'2026-08-14', animo:'bien', hechas:6}]
   cartaVista: false,
@@ -53,6 +58,10 @@ const EST_INICIAL = () => ({
   // [{cid, id, fecha, cumplidoEn}] — cumplidoEn es el día en que Kath marcó
   // que Diego se lo cumplió de verdad. Vacío = todavía lo está esperando.
   canjeados: [],
+  /* Misiones secundarias: lo que Kath hizo por fuera de la lista y le contó a
+     Diego. [{eid, dia, texto, ts, xp, oro}], las más nuevas primero. No se
+     vacían al cambiar el día — son un registro, no el contador del día. */
+  extras: [],
   sonido: true,
   primeraVez: true,
   // Última versión del juego que Kath ya vio. Vacía en una partida que ya
@@ -86,6 +95,15 @@ const MIGRACIONES = {
     e.v = 2;
     return e;
   },
+  /* v2 -> v3: la hora de cada misión cumplida y las misiones secundarias.
+     A qué hora se hizo lo de hoy no se puede reconstruir, así que arranca
+     vacío: las de hoy quedan sin hora y las de mañana ya la tienen. */
+  2: (e) => {
+    e.hoyEn = {};
+    e.extras = [];
+    e.v = 3;
+    return e;
+  },
 };
 
 function migrar(partida) {
@@ -108,6 +126,23 @@ function diaDeJuego(f) {
 function fechaBonita(iso) {
   const [a, m, d] = iso.split('-').map(Number);
   return `${d}/${m}/${a}`;
+}
+
+/* Hora de reloj de un instante guardado. Sin segundos: al segundo no le dice
+   nada a nadie y ocupa lugar en una línea que ya es corta. */
+function horaBonita(ts) {
+  const d = new Date(Number(ts) || 0);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+/* Día y hora juntos, que es lo que se muestra al lado de una misión cumplida.
+   El día va aunque casi siempre sea el de hoy: pasada la medianoche una misión
+   de anoche sigue contando para "hoy" (el día del juego arranca a las 4 AM), y
+   ahí ver sólo "02:40" confunde más de lo que aclara. */
+function fechaHoraBonita(ts) {
+  const d = new Date(Number(ts) || 0);
+  return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0')
+    + ' ' + horaBonita(ts);
 }
 
 function diasEntre(isoA, isoB) {
@@ -217,6 +252,7 @@ function chequearDia() {
 
   EST.dia = hoy;
   EST.hoy = {};
+  EST.hoyEn = {};
   EST.animoHoy = null;
   EST.cartaVista = false;
   EST.cartaIdx = Math.floor(Math.random() * CARTAS.length);
@@ -227,6 +263,11 @@ function chequearDia() {
 /* --- misiones ------------------------------------------------------------ */
 function misionPorId(id) { return MISIONES.find(m => m.id === id); }
 function hechoHoy(id) { return EST.hoy[id] || 0; }
+
+/* Los momentos en que se cumplió hoy, del más viejo al más nuevo. Puede venir
+   más corta que el contador, o vacía: una partida de antes de v3 tiene las
+   misiones de hoy pero no sus horas. Quien la muestre tiene que bancarse eso. */
+function horasDe(id) { return (EST.hoyEn && EST.hoyEn[id]) || []; }
 
 function contarHechasHoy() {
   let n = 0;
@@ -245,6 +286,9 @@ function completarMision(id) {
   const antes = hechoHoy(id);
   if (antes >= m.veces) return null;
   EST.hoy[id] = antes + 1;
+  if (!EST.hoyEn) EST.hoyEn = {};
+  const ahora = Date.now();
+  EST.hoyEn[id] = [...horasDe(id), ahora];
   EST.totalMisiones++;
   const completa = EST.hoy[id] >= m.veces;
   const subio = darXP(m.xp);
@@ -254,7 +298,7 @@ function completarMision(id) {
   EST.oroGanado = (Number(EST.oroGanado) || 0) + m.oro;
   guardar();
   return {
-    xp: m.xp, oro: m.oro, completa, subio,
+    xp: m.xp, oro: m.oro, completa, subio, ts: ahora,
     texto: completa ? m.final : m.frase[Math.min(antes, m.frase.length - 1)],
     resta: m.veces - EST.hoy[id]
   };
@@ -324,6 +368,49 @@ function confirmarCanje(canje) {
   return true;
 }
 
+/* --- misiones secundarias -------------------------------------------------- */
+/* Las que no están puestas en la casa: Kath escribe qué hizo y queda guardada
+   como una misión más del día, con su fecha y su hora. Pagan todas lo mismo —
+   ponerla a tasar lo que hizo sería pedirle justo el trabajo que el juego le
+   quiere sacar de encima. */
+function extrasDeHoy() {
+  return EST.extras.filter((e) => e && e.dia === EST.dia);
+}
+
+/* Cuántas más entran hoy. La interfaz lo mira para no abrir un formulario que
+   después no va a poder guardar. */
+function cupoExtras() {
+  return Math.max(0, EXTRA.porDia - extrasDeHoy().length);
+}
+
+/* Devuelve la recompensa, o null si el texto vino vacío o ya llegó al tope.
+   El recorte de largo se hace acá y no en el formulario: el formulario es una
+   sugerencia, esto es lo que efectivamente se guarda. */
+function agregarExtra(texto) {
+  const t = String(texto || '').trim().slice(0, EXTRA.largoMax);
+  if (!t) return null;
+  if (cupoExtras() <= 0) return null;
+
+  const extra = {
+    eid: disco.uuid(),
+    dia: EST.dia,
+    texto: t,
+    ts: Date.now(),
+    xp: EXTRA.xp,
+    oro: EXTRA.oro,
+  };
+  EST.extras.unshift(extra);
+  // Tope de historia: 200 es más de dos meses anotando el máximo por día, y
+  // evita que una partida vieja se vuelva pesada de sincronizar.
+  if (EST.extras.length > 200) EST.extras.length = 200;
+
+  const subio = darXP(extra.xp);
+  EST.oro += extra.oro;
+  EST.oroGanado = (Number(EST.oroGanado) || 0) + extra.oro;
+  guardar();
+  return { xp: extra.xp, oro: extra.oro, subio, extra, hoy: extrasDeHoy().length };
+}
+
 /* --- disfraces ------------------------------------------------------------ */
 /* Sortea un hallazgo entre lo que TODAVÍA no encontró. Se sortea sobre los que
    faltan y no sobre la lista entera para que el último accesorio no se vuelva
@@ -372,10 +459,11 @@ function ultimosDias() {
 export {
   EST, EST_INICIAL, CLAVE_GUARDADO, V_ACTUAL, migrar,
   suscribir, version,
-  diaDeJuego, fechaBonita, diasEntre,
+  diaDeJuego, fechaBonita, horaBonita, fechaHoraBonita, diasEntre,
   guardar, cargar, chequearDia,
   alGuardar, alReemplazar, reemplazarEstado, obtenerEstado,
-  misionPorId, hechoHoy, contarHechasHoy, progresoDelDia, completarMision,
+  misionPorId, hechoHoy, horasDe, contarHechasHoy, progresoDelDia, completarMision,
+  extrasDeHoy, cupoExtras, agregarExtra,
   darXP,
   etapaBicho, puedeEclosionar, nombreBicho,
   canjear, confirmarCanje,

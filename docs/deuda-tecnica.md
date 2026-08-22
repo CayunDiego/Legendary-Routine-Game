@@ -1,8 +1,8 @@
 # Deuda técnica
 
 Estado: publicado, con guardado en la nube (2026-08-16).
-Verificado con `npm run test`: lint 0 errores, `smoke:worker` 12 pasos verdes,
-`smoke` 77 pasos verdes.
+Verificado con `npm run test` (2026-08-22): lint 0 errores, `smoke:worker` 12
+pasos verdes, `smoke` 106 pasos verdes.
 
 ---
 
@@ -74,7 +74,9 @@ Detalle de capas: `hooks/useInput.js` importa `armarTeclado` de `game/`, que es 
 
 ## 4. El sprite de Diego entra a la build aunque el flag esté apagado
 
-**Severidad: baja.**
+**Severidad: baja. Sin efecto hoy** (desde 2026-08-22 `FLAGS.diego = true`:
+Diego está en el jardín y su PNG se usa de verdad). Queda anotado porque el
+mecanismo sigue igual para el próximo flag que apague algo con arte propio.
 
 `FLAGS.diego = false` lo saca del dibujo, de la colisión y de la interacción, y evita que se pida el PNG en runtime. Pero `config/sprites.js` hace `import SPRITE_DIEGO from '../assets/diego.png'` de forma estática, así que Rollup emite `assets/diego-<hash>.png` (14.93 kB) igual. El flag es un valor de runtime y no alcanza para eliminarlo.
 
@@ -162,6 +164,47 @@ está archivada como `arte-fuente/merli-crudo.png` a propósito. Rehacerla sale
 bien (se probó), pero el gato queda un toque más grande que el que está
 publicado, y ese cambio visual no tiene por qué viajar de garrón en el próximo
 cambio de sprite. Para rehacerla: renombrarla a `merli.png` y correr el script.
+
+---
+
+## 4f. La fusión no paga las misiones secundarias de los dos dispositivos
+
+**Severidad: baja.**
+
+Las secundarias se unen bien —cada una trae su `eid` y no se duplican ni se
+pierden— pero el oro no las sigue: `fusion.js` reconstruye el oro con
+`max(oroGanado)`, así que si el teléfono anotó una y la tablet otra, quedan las
+dos misiones anotadas y una sola pagada.
+
+No es nuevo del todo: las misiones de la casa tienen exactamente el mismo
+problema desde que existe la fusión. Lo que cambia es que ahora hay con qué
+arreglarlo, porque cada secundaria guarda cuánto valía (`xp` y `oro` adentro de
+la entrada) y el historial no se recorta por día.
+
+**Arreglo:** sumar el oro de las secundarias que la fusión sumó y agregárselo a
+`oroGanado`, en vez de tomar el máximo pelado. Hay que hacerlo idempotente
+(sincronizar dos veces no puede pagar dos veces), que es justo la parte que
+falta pensar.
+
+---
+
+## 4g. Las horas de hoy pueden quedar más cortas que el contador
+
+**Severidad: muy baja.**
+
+`hoyEn` guarda cuándo se cumplió cada vez de cada misión, pero al fusionar dos
+dispositivos se elige entera la lista del que hizo más veces esa misión, en vez
+de intercalar las dos (mezclarlas armaría una mañana que no pasó en ningún
+lado). Si los dos hicieron veces distintas de la misma misión, el contador
+fusionado puede ser mayor que la cantidad de horas que quedan.
+
+Se ve como una misión con "2/2" y una sola hora al lado. Es honesto —no se
+inventa un horario— y pasa sólo con dos dispositivos el mismo día en la misma
+misión repetible. Lo mismo pasa, sin fusión de por medio, con una partida
+anterior a la v3: tiene el contador y no tiene las horas.
+
+**Arreglo:** ninguno que valga la pena hoy. Si molesta, la salida es guardar la
+hora junto con el dispositivo que la anotó y mostrarlas todas.
 
 ---
 

@@ -8,6 +8,7 @@ import { crearStore } from './store.js';
  *    juego    se puede caminar
  *    dialogo  hay un cuadro de texto abierto
  *    menu     el overlay con las pestañas
+ *    modal    un formulario abierto encima de todo (escribir con el teclado)
  *
  *  El motor lo consulta con juegoActivo() para frenar el movimiento; los
  *  componentes se enganchan al store para mostrarse o esconderse.
@@ -19,6 +20,7 @@ let pestana = 'misiones';
 let flotantes = [];      // [{ id, texto }] textos de recompensa que suben y se van
 let flashes = 0;         // contador: cada incremento dispara un destello blanco
 let banner = null;       // { id, texto } cartelito arriba a la derecha, o null
+let modal = null;        // { tipo } formulario abierto, o null
 let proximoId = 1;
 
 function getModo() { return modo; }
@@ -61,6 +63,27 @@ function dispararFlash() {
   store.avisar();
 }
 
+/* --- modal ---------------------------------------------------------------- */
+/* Un formulario de verdad, con un campo de texto: es lo único de la interfaz
+   donde el teclado escribe en vez de jugar. Por eso es un modo aparte y no un
+   diálogo más — con modo 'modal' el motor frena a Kath (juegoActivo() da
+   false) y pulsarA/pulsarB no interactúan con lo que haya enfrente mientras
+   ella tipea. */
+function getModal() { return modal; }
+
+function abrirModal(tipo) {
+  modal = { tipo };
+  setModo('modal');
+  store.avisar();
+}
+
+function cerrarModal() {
+  if (!modal) return;
+  modal = null;
+  setModo('juego');
+  store.avisar();
+}
+
 /* Cartelito chico arriba a la derecha, que aparece solo y se va solo: no pide
    ningún toque ni frena el juego (a diferencia de dialogo(), que sí lo hace).
    Sirve para avisos que no necesitan explicación, como "hay algo nuevo". */
@@ -80,6 +103,7 @@ export {
   getPestana, setPestana,
   getFlotantes, getFlashes, mostrarRecompensa, dispararFlash,
   getBanner, mostrarBanner,
+  getModal, abrirModal, cerrarModal,
 };
 export const suscribir = store.suscribir;
 export const version = store.version;

@@ -79,8 +79,8 @@ const TODOS_LOS_OBJETOS = [
 
      La fila y=11 queda ENTERA libre a propósito: es el único pasillo del
      cuarto. Con las filas 10 y 12 ocupadas, cualquier cosa que se ponga en la
-     11 —Diego incluido— parte el living en dos y deja muebles inalcanzables.
-     Por eso Diego bajó a y=12: antes estaba en (15,11), en el medio del paso.
+     11 parte el living en dos y deja muebles inalcanzables. Diego llegó a
+     estar ahí y hubo que correrlo; hoy directamente vive afuera, en el jardín.
 
      Y la casilla (14,12) tiene que quedar libre: justo abajo está la puerta al
      jardín (14,13). Un sillón ahí no rompe nada que se note —al jardín se
@@ -106,12 +106,30 @@ const TODOS_LOS_OBJETOS = [
   { x:13, y:12, art:'mesaRatona',solido:true },
   { x:15, y:12, art:'sofa',      solido:true },   // en 14 tapaba la puerta al jardin
   { x:18, y:12, art:'planta',    solido:true },
-  // Diego: personaje, no objeto. El motor lo dibuja recortando cuadros de su
-  // hoja (24x32 x3), igual que a la jugadora, y se da vuelta cuando ella se
-  // acerca. Cerca del puesto de premios, que es el que él cumple.
-  { x:17, y:12, art:'diego',     accion:'diego', personaje:true, dir:0, flag:'diego' },
 
-  // --- Jardín ---
+  /* --- Jardín ---
+     Diego: personaje, no objeto. El motor lo dibuja recortando cuadros de su
+     hoja (24x32 x3), igual que a la jugadora, y se da vuelta cuando ella se
+     acerca.
+
+     Va AFUERA de la casa a propósito: es el que toma las misiones secundarias,
+     y contarle algo que hiciste puertas afuera se parece más a salir a
+     buscarlo que a cruzárselo en el living.
+
+     La casilla es (6,14): al lado del sendero que baja de la puerta de la
+     cocina —o sea, lo primero que se cruza al salir— pero corrido una casilla
+     para no pararse encima del sendero ni tapar la puerta de arriba. Diego es
+     sólido: parado en (5,14) dejaría la salida de la cocina sin paso.
+
+     `dir:3` es con qué pose arranca: mirando para arriba, o sea a la casa,
+     esperando que ella salga. De ahí en más no se queda quieto — solo, mira
+     para todos lados (actualizarPersonajes en motor.js) y con Kath cerca la
+     mira a ella (dirHaciaJugadora).
+
+     Conviene que la pose inicial NO sea la misma que le toca cuando Kath le
+     habla, que es `dir:0` (ella se le para enfrente, él mira para abajo). Con
+     esa puesta, el primer encuentro del día es un giro que no se ve. */
+  { x:6,  y:14, art:'diego',     accion:'diego', personaje:true, dir:3, flag:'diego' },
   { x:2,  y:16, art:'reposera',  accion:'mision', mision:'sol' },
   { x:8,  y:17, art:'yoga',      accion:'mision', mision:'ejercicio' },
   { x:16, y:16, art:'huevo',     accion:'companero' },

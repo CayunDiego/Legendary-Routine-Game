@@ -421,12 +421,17 @@ paso('codigo de partida: se genera valido y estable', () => {
   igual(disco.normalizarCodigo(disco.formatearCodigo(c)), c, 'con guiones y sin guiones');
 });
 
-paso('migracion v1 -> v2 reconstruye el oro ganado', () => {
+paso('migracion: una partida v1 se pone al dia en cadena', () => {
+  // Las migraciones se aplican una atras de otra, asi que una partida vieja de
+  // varias versiones llega sola hasta la actual. Por eso se comprueba la ultima
+  // version y no la 2: si alguien agrega una migracion y rompe la cadena, la
+  // partida de Kath se queda a mitad de camino y este paso lo dice.
   const viejo = { v: 1, nivel: 2, xp: 10, oro: 40, hoy: {}, canjeados: [{ id: 'abrazo', fecha: '2026-08-10' }] };
   const nuevo = logica.migrar(viejo);
-  igual(nuevo.v, 2, 'version');
-  igual(nuevo.oroGanado, 70, 'oro ganado = 40 que tiene + 30 del abrazo');
+  igual(nuevo.v, logica.V_ACTUAL, 'version');
+  igual(nuevo.oroGanado, 70, 'oro ganado = 40 que tiene + 30 del abrazo (v1 -> v2)');
   if (!nuevo.canjeados[0].cid) throw new Error('el canje viejo no recibio cid');
+  igual(nuevo.extras.length, 0, 'y llego con las secundarias vacias (v2 -> v3)');
 });
 
 const partidaBase = (extra) => ({
@@ -570,6 +575,261 @@ paso('mapa: ningun mueble tapa una puerta ni pisa a otro mueble', () => {
     }
   }
   if (puertas < 6) throw new Error('se perdieron puertas del mapa: ' + puertas);
+});
+
+const { EXTRA } = await vite.ssrLoadModule('/src/config/extras.js');
+const dibujo = await vite.ssrLoadModule('/src/engine/drawing.js');
+
+/* ---------------------------------------------------------------------------
+ *  La hora de cada misión y las misiones secundarias.
+ *
+ *  Las dos cosas tocan lo mismo que ya era delicado: el formato de la partida
+ *  (que hay que migrar sin perder nada) y la fusión de dos dispositivos, donde
+ *  "sumar" está bien para un contador y muy mal para una hora.
+ * ------------------------------------------------------------------------- */
+paso('Diego: parado afuera de la casa, sin taparle el paso a nadie', () => {
+  const d = mapaCfg.OBJETOS.find((o) => o.art === 'diego');
+  if (!d) throw new Error('Diego no esta en el mundo: FLAGS.diego apagado');
+  if (d.y <= 13) throw new Error(`sigue adentro de la casa, en ${d.x},${d.y}`);
+  igual(mapaCfg.MAPA[d.y][d.x], 'G', 'parado en el pasto y no sobre el sendero');
+  igual(d.accion, 'diego', 'sigue siendo el que habla');
+});
+
+paso('Diego: se da vuelta hacia donde esta parada Kath', () => {
+  const d = mapaCfg.OBJETOS.find((o) => o.art === 'diego');
+  const { TILE } = dibujo;
+  const guardada = { px: motor.jugadora.px, py: motor.jugadora.py };
+  const parar = (tx, ty) => { motor.jugadora.px = tx * TILE; motor.jugadora.py = ty * TILE; };
+
+  // Las cuatro casillas desde las que se le puede hablar. La direccion es la
+  // fila de la hoja de sprites: 0 abajo, 1 izquierda, 2 derecha, 3 arriba.
+  parar(d.x, d.y + 1); igual(motor.dirHaciaJugadora(d), 0, 'Kath abajo -> mira abajo');
+  parar(d.x - 1, d.y); igual(motor.dirHaciaJugadora(d), 1, 'Kath a la izquierda');
+  parar(d.x + 1, d.y); igual(motor.dirHaciaJugadora(d), 2, 'Kath a la derecha');
+  parar(d.x, d.y - 1); igual(motor.dirHaciaJugadora(d), 3, 'Kath arriba');
+
+  // A mitad de paso: ya casi al lado por la derecha, todavia sin llegar a la
+  // casilla. Tiene que estar mirandola desde antes de que termine de caminar.
+  parar(d.x + 1, d.y + 0.4);
+  igual(motor.dirHaciaJugadora(d), 2, 'a mitad de paso ya la sigue');
+
+  // Cerca la sigue; lejos se queda como lo dejo el mapa (RADIO_MIRADA = 3).
+  parar(d.x + 2, d.y);
+  igual(motor.dirHaciaJugadora(d), 2, 'a dos casillas todavia la mira');
+  parar(d.x + 5, d.y);
+  igual(motor.dirHaciaJugadora(d), d.dir || 0, 'a cinco ya no: vuelve a su pose');
+
+  // Y la pose de descanso no puede ser la misma que le toca cuando Kath se le
+  // para enfrente: giraria igual, pero no se notaria. Es el bug que hubo.
+  parar(d.x, d.y + 1);
+  if (motor.dirHaciaJugadora(d) === (d.dir || 0)) {
+    throw new Error('mira para el mismo lado parado que hablando: el giro no se ve');
+  }
+
+  motor.jugadora.px = guardada.px; motor.jugadora.py = guardada.py;
+});
+
+paso('Diego: si Kath baila al lado, el se prende', () => {
+  const d = mapaCfg.OBJETOS.find((o) => o.art === 'diego');
+  const { TILE } = dibujo;
+  const guardada = { px: motor.jugadora.px, py: motor.jugadora.py };
+  uiSt.setModo('juego');
+  motor.input.dir = -1;
+  motor.jugadora.moviendo = false;
+
+  const parar = (tx, ty) => {
+    motor.jugadora.tx = tx; motor.jugadora.ty = ty;
+    motor.jugadora.px = tx * TILE; motor.jugadora.py = ty * TILE;
+  };
+
+  parar(d.x, d.y + 1);
+  motor.bailar(4);
+  motor.actualizarPersonajes(16);
+  if (!d.bailando) throw new Error('Kath baila al lado y el no se prende');
+  igual(d.baileCoreo, motor.jugadora.baileCoreo, 'baila la misma coreografia que ella');
+
+  // Va un cuadro atras: si estuvieran en fase exacta se ven como dos copias de
+  // la misma animacion.
+  motor.jugadora.tBaile = 1000;
+  motor.actualizarPersonajes(16);
+  if (!(d.tBaile < motor.jugadora.tBaile)) throw new Error('tendria que ir atras de ella');
+
+  // Desde la otra punta del jardin, no.
+  parar(d.x + 9, d.y);
+  motor.actualizarPersonajes(16);
+  if (d.bailando) throw new Error('bailo desde lejos');
+
+  // Y cuando ella para, el para.
+  parar(d.x, d.y + 1);
+  motor.actualizarPersonajes(16);
+  if (!d.bailando) throw new Error('volviendo al lado tendria que prenderse de nuevo');
+  motor.jugadora.bailando = false;
+  motor.actualizarPersonajes(16);
+  if (d.bailando) throw new Error('ella paro y el sigue bailando solo');
+
+  motor.jugadora.px = guardada.px; motor.jugadora.py = guardada.py;
+});
+
+paso('dia y noche: la luz sigue la hora real, sin saltos', () => {
+  const aLas = (h, m) => new Date(2026, 7, 22, h, m || 0);
+  const alfa = (h, m, adentro) => motor.luzAmbiente(aLas(h, m), !!adentro).a;
+
+  igual(alfa(12), 0, 'al mediodia no se pinta nada');
+  if (alfa(23) < 0.35) throw new Error('a las 11 de la noche tendria que estar oscuro: ' + alfa(23));
+  if (alfa(3) < 0.35) throw new Error('a las 3 de la madrugada tambien: ' + alfa(3));
+
+  // Amanecer y atardecer: entre medio, ni de dia ni de noche.
+  const tarde = alfa(19, 30);
+  if (!(tarde > 0.1 && tarde < 0.35)) throw new Error('el atardecer quedo raro: ' + tarde);
+
+  // Lo que se pedia es que cambie, no que salte: entre las 18 y las 22 no puede
+  // haber ningun escalon grande de un minuto al siguiente.
+  let previa = alfa(18);
+  for (let min = 1; min <= 4 * 60; min++) {
+    const ahora = alfa(18 + Math.floor(min / 60), min % 60);
+    if (Math.abs(ahora - previa) > 0.02) {
+      throw new Error('salto de luz de ' + (ahora - previa).toFixed(3) + ' a las ' + (18 + min / 60));
+    }
+    previa = ahora;
+  }
+
+  // El circulo cierra: 23:59 y 00:00 tienen que ser casi lo mismo.
+  if (Math.abs(alfa(23, 59) - alfa(0, 0)) > 0.02) throw new Error('la medianoche pega un salto');
+
+  // Adentro hay luz prendida: la noche pega menos que en el jardin.
+  if (!(alfa(23, 0, true) < alfa(23, 0))) throw new Error('adentro tendria que estar mas claro');
+  igual(alfa(12, 0, true), 0, 'de dia, adentro tampoco se pinta');
+
+  // Y el color acompana: de noche tira a azul, al atardecer a naranja.
+  const noche = motor.luzAmbiente(aLas(23), false);
+  if (!(noche.b > noche.r)) throw new Error('la noche tendria que tirar a azul');
+  const atardecer = motor.luzAmbiente(aLas(19), false);
+  if (!(atardecer.r > atardecer.b)) throw new Error('el atardecer tendria que tirar a naranja');
+});
+
+paso('Diego: solo, mira para todos lados', () => {
+  const d = mapaCfg.OBJETOS.find((o) => o.art === 'diego');
+  const { TILE } = dibujo;
+  const guardada = { px: motor.jugadora.px, py: motor.jugadora.py };
+  uiSt.setModo('juego');
+  // Bien lejos: con Kath cerca el ocio no corre, mira a Kath y listo.
+  motor.jugadora.px = (d.x + 12) * TILE; motor.jugadora.py = d.y * TILE;
+  d.tOcio = undefined; d.dirOcio = undefined;
+
+  const vistas = new Set();
+  let previa = d.dir;
+  // ~5 minutos de juego a 100 ms por vuelta. Los ratos se sortean entre 1,6 y
+  // 4,2 segundos, asi que dan de sobra para ver las cuatro direcciones.
+  for (let i = 0; i < 3000; i++) {
+    motor.actualizarPersonajes(100);
+    const ahora = motor.dirHaciaJugadora(d);
+    if (ahora !== previa) { vistas.add(ahora); previa = ahora; }
+  }
+  igual(vistas.size, 4, 'direcciones distintas que llego a mirar');
+
+  // Con ella al lado, el ocio no le gana: mira a Kath.
+  motor.jugadora.px = d.x * TILE; motor.jugadora.py = (d.y + 1) * TILE;
+  motor.actualizarPersonajes(100);
+  igual(motor.dirHaciaJugadora(d), 0, 'con Kath enfrente la mira a ella');
+
+  motor.jugadora.px = guardada.px; motor.jugadora.py = guardada.py;
+});
+
+paso('misiones: cada vez cumplida deja su hora', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  const r1 = logica.completarMision('agua');
+  const r2 = logica.completarMision('agua');
+  igual(logica.horasDe('agua').length, 2, 'dos vasos, dos horas');
+  if (!(r1.ts > 0)) throw new Error('la primera no trajo marca de tiempo');
+  if (r2.ts < r1.ts) throw new Error('las horas quedaron desordenadas');
+  const h = logica.horaBonita(r1.ts);
+  igual(h.length, 5, 'la hora mide hh:mm');
+  igual(h[2], ':', 'los dos puntos en el medio');
+  igual(logica.fechaHoraBonita(r1.ts).length, 11, 'dd/mm hh:mm');
+  igual(logica.horasDe('cama').length, 0, 'una mision sin hacer no tiene horas');
+});
+
+paso('secundarias: se anotan con su hora, pagan, y tienen tope diario', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  const est = logica.obtenerEstado();
+  const oroAntes = est.oro;
+
+  igual(logica.agregarExtra('   '), null, 'un texto vacio no anota nada');
+
+  const r = logica.agregarExtra('  Sali a caminar sin motivo  ');
+  igual(logica.extrasDeHoy().length, 1, 'quedo anotada');
+  igual(logica.extrasDeHoy()[0].texto, 'Sali a caminar sin motivo', 'se guarda sin los espacios de mas');
+  igual(est.oro, oroAntes + r.oro, 'pago el oro');
+  igual(est.oroGanado, r.oro, 'y lo sumo a lo ganado de toda la vida');
+  if (!(logica.extrasDeHoy()[0].ts > 0)) throw new Error('quedo sin hora');
+
+  const largo = logica.agregarExtra('x'.repeat(EXTRA.largoMax + 200));
+  igual(largo.extra.texto.length, EXTRA.largoMax, 'se recorta al largo maximo');
+
+  while (logica.cupoExtras() > 0) logica.agregarExtra('otra mas');
+  igual(logica.extrasDeHoy().length, EXTRA.porDia, 'el tope del dia');
+  igual(logica.agregarExtra('una mas'), null, 'pasado el tope no anota');
+});
+
+paso('secundarias: guardarla cierra el formulario y lo festeja', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  uiSt.abrirModal('extra');
+  igual(uiSt.getModo(), 'modal', 'el modal abre su propio modo');
+  mod.guardarExtra('ordene el cajon de los cables');
+  igual(uiSt.getModal(), null, 'el formulario se cerro');
+  igual(uiSt.getModo(), 'dialogo', 'y el festejo va en un dialogo');
+  igual(logica.extrasDeHoy().length, 1, 'quedo anotada');
+  dlg.cerrarDialogo();
+});
+
+paso('modal: mientras se escribe, A y B no juegan', () => {
+  uiSt.abrirModal('extra');
+  mod.pulsarA();
+  igual(uiSt.getModo(), 'modal', 'A no interactuo con lo que hubiera enfrente');
+  mod.pulsarB();
+  igual(uiSt.getModo(), 'juego', 'B cierra el formulario');
+  igual(uiSt.getModal(), null, 'y lo deja limpio');
+});
+
+paso('migracion v2 -> v3 no inventa horas ni secundarias', () => {
+  const viejo = { v: 2, nivel: 2, xp: 0, oro: 0, hoy: { cama: 1 }, canjeados: [] };
+  const nuevo = logica.migrar(viejo);
+  igual(nuevo.v, 3, 'version');
+  igual(Object.keys(nuevo.hoyEn).length, 0, 'lo de hoy queda sin hora, no con una inventada');
+  igual(nuevo.extras.length, 0, 'sin secundarias');
+  igual(nuevo.hoy.cama, 1, 'y la mision de hoy sigue estando');
+});
+
+paso('fusion: las horas de hoy no se intercalan entre dos dispositivos', () => {
+  // El telefono tomo agua dos veces; la tablet una, cinco minutos despues de la
+  // primera. Es el mismo vaso mal sincronizado: mezclarlas armaria una manana
+  // que no paso en ningun lado.
+  const tel = partidaBase({ seq: 5, hoy: { agua: 2 }, hoyEn: { agua: [1000, 9000] } });
+  const tab = partidaBase({ seq: 9, hoy: { agua: 1 }, hoyEn: { agua: [1300] } });
+  const f = fusion.fusionar(tel, tab);
+  igual(f.hoy.agua, 2, 'el contador');
+  igual(f.hoyEn.agua.join(','), '1000,9000', 'las horas enteras del que hizo mas veces');
+});
+
+paso('fusion: las horas nunca sobran del contador', () => {
+  const a = partidaBase({ seq: 1, dia: '2026-08-14', hoy: { agua: 3 }, hoyEn: { agua: [1, 2, 3] } });
+  const b = partidaBase({ seq: 2, dia: '2026-08-15', hoy: { agua: 1 }, hoyEn: { agua: [7] } });
+  const f = fusion.fusionar(a, b);
+  igual(f.dia, '2026-08-15', 'manda el dia mas nuevo');
+  igual(f.hoyEn.agua.length, 1, 'y se lleva solo las horas de ese dia');
+});
+
+paso('fusion: las secundarias se unen y no se duplican', () => {
+  const una = { eid: 'e1', dia: '2026-08-15', texto: 'caminar', ts: 100, xp: 15, oro: 8 };
+  const otra = { eid: 'e2', dia: '2026-08-15', texto: 'llamar a mama', ts: 300, xp: 15, oro: 8 };
+  const a = partidaBase({ seq: 1, oroGanado: 100, extras: [una] });
+  const b = partidaBase({ seq: 2, oroGanado: 100, extras: [otra, una] });
+  const f = fusion.fusionar(a, b);
+  igual(f.extras.length, 2, 'las dos, una sola vez');
+  igual(f.extras[0].eid, 'e2', 'la mas nueva primero');
 });
 
 const arteDisfraz = await vite.ssrLoadModule('/src/engine/disfraces.js');
@@ -870,6 +1130,11 @@ const { renderToStaticMarkup } = await import('react-dom/server');
 const React = (await import('react')).default;
 const { GameProvider: Provider } = await vite.ssrLoadModule('/src/state/GameContext.jsx');
 
+/* El formulario de las secundarias no dibuja nada mientras esta cerrado, que es
+   lo correcto en el juego pero seria un "dibujo vacio" aca. Se abre para que le
+   toque el turno con algo adentro. */
+uiSt.abrirModal('extra');
+
 for (const [nombre, ruta] of [
   ['App', '/src/App.jsx'],
   ['HUD', '/src/components/HUD.jsx'],
@@ -878,6 +1143,8 @@ for (const [nombre, ruta] of [
   ['Controles', '/src/components/Controles.jsx'],
   ['AyudaTeclas', '/src/components/AyudaTeclas.jsx'],
   ['Escena', '/src/components/Escena.jsx'],
+  ['Reloj', '/src/components/Reloj.jsx'],
+  ['ModalExtra', '/src/components/ModalExtra.jsx'],
   ['Canvas', '/src/components/Canvas.jsx'],
   ['Dialogo', '/src/components/Dialogo.jsx'],
   ['Menu', '/src/components/Menu/Menu.jsx'],

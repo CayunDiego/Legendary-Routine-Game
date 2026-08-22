@@ -19,6 +19,24 @@ pasa a ser una tarea normal, no necesita estar acá.
 
 ## Pendientes
 
+- **2026-08-22 — El reloj con el día de la semana.** `PixelTexto`
+  (`components/Reloj.jsx`) hoy dibuja dígitos, `:` y `/` y nada más. Con las
+  letras dibujadas se podría poner "SAB 22/08" arriba de la hora, que es lo que
+  uno mira primero cuando no sabe ni qué día es. Son ~7 glifos por palabra, o
+  las 27 letras si se quiere algo reusable.
+
+- **2026-08-22 — Ver las misiones secundarias de los días pasados.** Se guardan
+  con su fecha (`EST.extras`, hasta 200) pero la pestaña Hoy sólo muestra las
+  del día. En Progreso entrarían bien: es el lugar donde ya se mira para atrás,
+  y leer lo que una hizo hace tres semanas es la parte linda de haberlo
+  anotado.
+
+- **2026-08-22 — Que las secundarias cuenten para la racha.** Hoy dan XP y oro
+  pero no mueven `contarHechasHoy()`, así que un día entero de cosas que no
+  están en la casa no mantiene la racha. Tiene su lógica —la racha mide la
+  rutina— pero también tiene su contra el día que Kath hizo un montón y el
+  juego le dice que no hizo nada.
+
 - **2026-08-16 — Carpita mágica en el patio.** Mini carpa/casita de juguete
   con puerta negra. Kath choca con la puerta y la teletransporta a un mundo
   maravilloso (mapa/escena nueva).

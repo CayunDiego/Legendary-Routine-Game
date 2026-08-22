@@ -3,6 +3,7 @@ import { MISIONES } from '../config/misiones.js';
 import { ANIMOS } from '../config/animos.js';
 import { CARTAS } from '../config/cartas.js';
 import { COMPANERO } from '../config/companero.js';
+import { EXTRA, FRASES_SIN_EXTRA, FRASES_CON_EXTRA } from '../config/extras.js';
 
 import { TILE } from '../engine/drawing.js';
 import { construirTiles } from '../engine/tiles.js';
@@ -19,7 +20,9 @@ import { $ } from '../dom.js';
 
 import {
   EST, guardar, cargar, chequearDia, alReemplazar,
-  misionPorId, hechoHoy, contarHechasHoy, progresoDelDia, completarMision,
+  misionPorId, hechoHoy, horasDe, contarHechasHoy, progresoDelDia, completarMision,
+  horaBonita, fechaHoraBonita,
+  extrasDeHoy, cupoExtras, agregarExtra,
   etapaBicho, puedeEclosionar, nombreBicho,
   buscarDisfrazEnCesped,
 } from '../state/gameLogic.js';
@@ -27,6 +30,7 @@ import { pedirPermanencia } from '../state/persistencia.js';
 import * as sync from '../state/sync.js';
 import {
   getModo, setModo, juegoActivo, setPestana, mostrarRecompensa, dispararFlash, mostrarBanner,
+  abrirModal, cerrarModal,
 } from '../state/ui.js';
 import {
   dialogo, avanzarDialogo, cerrarDialogo, moverOpcion, elegirOpcion, hayOpciones,
@@ -96,7 +100,7 @@ function accionMision(id) {
   const m = misionPorId(id);
   const hechas = hechoHoy(id);
   if (hechas >= m.veces) {
-    dialogo([{ t: `${m.icono}  ${m.nombre}\nYa lo hiciste hoy (${m.veces}/${m.veces}). Descansá, campeona.` }]);
+    dialogo([{ t: `${m.icono}  ${m.nombre}\nYa lo hiciste hoy (${m.veces}/${m.veces}).${cuandoLoHizo(id)}\nDescansá, campeona.` }]);
     return;
   }
   const restante = m.veces > 1 ? `  (${hechas}/${m.veces} hoy)` : '';
@@ -109,12 +113,22 @@ function accionMision(id) {
   }]);
 }
 
+/* La hora de una misión que ya está cumplida, para el diálogo. Puede no haber
+   ninguna —una partida de antes de que se guardara la hora— y entonces no dice
+   nada, que es mejor que inventar un horario. */
+function cuandoLoHizo(id) {
+  const hs = horasDe(id).map(horaBonita);
+  if (!hs.length) return '';
+  if (hs.length === 1) return `\nFue a las ${hs[0]}.`;
+  return `\nA las ${hs.join(' y a las ')}.`;
+}
+
 function confirmarMision(id) {
   const r = completarMision(id);
   if (!r) return;
   sonar('ok');
   mostrarRecompensa(r.xp, r.oro);
-  const cola = [{ t: r.texto, premio: `+${r.xp} XP   +${r.oro} 💰` }];
+  const cola = [{ t: `${r.texto}\n\n🕒 ${fechaHoraBonita(r.ts)}`, premio: `+${r.xp} XP   +${r.oro} 💰` }];
   if (!r.completa && r.resta > 0) {
     cola.push({ t: `Te quedan ${r.resta} para completar esta misión hoy.` });
   }
@@ -208,8 +222,15 @@ function accionCarta() {
   dialogo([{ t: `💌 Nota de ${CONFIG.autor}\n\n"${CARTAS[EST.cartaIdx]}"`, carta: true }]);
 }
 
-/* Diego informa cómo viene el día. Lo que dice sale del estado, así que cambia
-   solo; para tocar los textos, es acá y nada más. */
+/* Diego informa cómo viene el día y toma las misiones secundarias. Lo que dice
+   sale del estado, así que cambia solo; para tocar los textos es acá y nada más
+   (las frases de las secundarias viven en config/extras.js).
+
+   Las frases rotan en vez de sortearse: con tres o cuatro, Math.random() repite
+   la misma dos veces seguidas bastante seguido, y eso se lee como que Diego no
+   tiene nada más para decir. */
+let diegoIdx = 0;
+
 function accionDiego() {
   const p = progresoDelDia();
   const hechas = contarHechasHoy();
@@ -230,7 +251,56 @@ function accionDiego() {
     cola.push({ t: `Ah, y llevás ${EST.racha} días seguidos 🔥\nQuería que lo supieras.` });
   }
   if (EST.oro >= 30) {
-    cola.push({ t: `Tenés ${EST.oro} 💰 juntadas.\nEl puesto de premios está acá al lado. Yo los cumplo.` });
+    cola.push({ t: `Tenés ${EST.oro} 💰 juntadas.\nEl puesto de premios está en el living. Yo los cumplo.` });
+  }
+
+  /* La pregunta va siempre última, porque es lo único que espera respuesta: en
+     el medio, el resto del informe se leería recién después de haber abierto (o
+     cerrado) el formulario. */
+  const hoy = extrasDeHoy();
+  if (cupoExtras() <= 0) {
+    cola.push({
+      t: `Ah, y ya me contaste ${hoy.length} ${hoy.length === 1 ? 'cosa' : 'cosas'} por fuera de la lista hoy.\nPor hoy cerramos el cuaderno. Mañana te escucho de nuevo.`,
+    });
+    dialogo(cola);
+    return;
+  }
+
+  cola.push({
+    t: `¿Hiciste alguna misión secundaria hoy?\nAlgo que no está en la casa, pero que te costó igual.`,
+    opciones: [
+      { txt: 'Sí, te cuento', cb: () => abrirModal('extra') },
+      { txt: 'Hoy no', cb: () => dialogo([{ t: FRASES_SIN_EXTRA[diegoIdx++ % FRASES_SIN_EXTRA.length] }]) },
+    ],
+  });
+  dialogo(cola);
+}
+
+/* Lo llama ModalExtra.jsx al tocar "Anotarla". El formulario no toca el estado
+   ni festeja: guardar es de gameLogic y el festejo (sonido, la recompensa que
+   sube, el diálogo, la subida de nivel) sale de acá, igual que en cualquier
+   otra misión. */
+function guardarExtra(texto) {
+  const r = agregarExtra(texto);
+  cerrarModal();
+  if (!r) {
+    dialogo([{ t: `No me llegó nada escrito, así que no anoté nada.\nVolvé cuando quieras contarme.` }]);
+    return;
+  }
+
+  sonar('ok');
+  mostrarRecompensa(r.xp, r.oro);
+  const remate = FRASES_CON_EXTRA[Math.min(r.hoy, FRASES_CON_EXTRA.length) - 1];
+  const cola = [{
+    t: `${EXTRA.icono} "${r.extra.texto}"\n${remate}\n\n🕒 ${fechaHoraBonita(r.extra.ts)}`,
+    premio: `+${r.xp} XP   +${r.oro} 💰`,
+  }];
+  if (r.subio) {
+    const nivelAntes = EST.nivel - r.subio;
+    for (let i = 0; i < r.subio; i++) {
+      cola.push({ t: `¡SUBISTE AL NIVEL ${nivelAntes + i + 1}!\n${fraseNivel(nivelAntes + i + 1)}`, fanfarria: true });
+    }
+    agregarEvolucion(cola, nivelAntes, EST.nivel);
   }
   dialogo(cola);
 }
@@ -362,6 +432,9 @@ let ultimaA = 0;
 
 function pulsarA() {
   iniciarAudio();
+  // Con el formulario abierto los botones no hacen nada: Kath está escribiendo,
+  // y un A de más abriría el mueble que tenga enfrente por debajo del modal.
+  if (getModo() === 'modal') return;
   if (getModo() === 'dialogo') { avanzarDialogo(); return; }
   if (getModo() === 'menu') return;
   if (getModo() === 'titulo') { empezar(); return; }
@@ -375,6 +448,7 @@ function pulsarA() {
 
 function pulsarB() {
   iniciarAudio();
+  if (getModo() === 'modal') { cerrarModal(); return; }
   if (getModo() === 'dialogo') { cerrarDialogo(); return; }
   if (getModo() === 'menu') { cerrarMenu(); return; }
   if (getModo() === 'juego') abrirMenu('misiones');
@@ -562,4 +636,7 @@ Las misiones se reiniciaron. ${EST.racha > 0 ? `Racha: ${EST.racha} 🔥` : ''}`
   }
 }
 
-export { iniciar, empezar, pulsarA, pulsarB, abrirMenu, cerrarMenu, armarTeclado, dialogo };
+export {
+  iniciar, empezar, pulsarA, pulsarB, abrirMenu, cerrarMenu, armarTeclado, dialogo,
+  guardarExtra,
+};

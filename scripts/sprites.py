@@ -294,6 +294,28 @@ def medir(mascara, cfg, arr):
 #  Fondo: el generador rara vez entrega transparencia
 # ---------------------------------------------------------------------------
 
+def _con_mezclas(colores, pasos=8):
+    """Los colores de fondo mas todas las mezclas entre dos de ellos.
+
+    El damero de un generador casi nunca viene con dos grises limpios: el borde
+    entre cuadro y cuadro trae los tonos intermedios (195 y 243 dejan un 220 en
+    el medio). Esos intermedios no aparecen en el marco de 1 px, asi que la
+    deteccion no los ve, y sobreviven como una reja de lineas finas encima de
+    todo -- que es exactamente lo que se vio con la hoja del baile de Diego.
+
+    Mezclar de a pares y sacar los repetidos alcanza: son unas pocas decenas de
+    colores mas, y el dibujo no suele tener un gris justo entre los dos del
+    fondo (si lo tiene, aparece agujereado en la imagen de revision)."""
+    salida = [c.astype(np.int16) for c in colores]
+    for i, a in enumerate(colores):
+        for b in colores[i + 1:]:
+            for k in range(1, pasos):
+                t = k / pasos
+                salida.append(np.round(a.astype(np.float64) * (1 - t)
+                                       + b.astype(np.float64) * t).astype(np.int16))
+    return np.unique(np.array(salida), axis=0)
+
+
 def quitar_fondo(img, modo, tolerancia=30):
     """Pasa a transparente los colores de fondo (damero gris, gris plano).
 
@@ -310,12 +332,12 @@ def quitar_fondo(img, modo, tolerancia=30):
         if (borde[:, 3] < ALFA_MIN).mean() > 0.9:
             return img  # ya viene con transparencia: no hay fondo que sacar
         colores, cuentas = np.unique(borde[:, :3], axis=0, return_counts=True)
-        elegidos = colores[cuentas >= borde.shape[0] * 0.05]
+        elegidos = _con_mezclas(colores[cuentas >= borde.shape[0] * 0.05])
     else:
-        elegidos = np.array([modo], dtype=np.uint8)  # un [r, g, b] a mano
+        elegidos = np.array([modo], dtype=np.int16)  # un [r, g, b] a mano
     rgb = arr[:, :, :3].astype(np.int16)
     for color in elegidos:
-        dist = np.abs(rgb - color.astype(np.int16)).sum(axis=2)
+        dist = np.abs(rgb - color).sum(axis=2)
         arr[:, :, 3] = np.where(dist <= tolerancia, 0, arr[:, :, 3])
     return Image.fromarray(arr, 'RGBA')
 
@@ -551,6 +573,66 @@ def _armar_grilla(img, cfg, usadas, cols, filas, cw, ch):
     return Image.fromarray(dst, 'RGBA')
 
 
+def _espejar_filas(img, cfg):
+    """Da vuelta horizontalmente las filas que el manifiesto pida ("espejar").
+
+    Es para cuando el generador manda una pose mirando para el lado equivocado.
+    Paso con Diego: la hoja trae las DOS filas de perfil mirando a la izquierda,
+    asi que su fila "derecha" lo dejaba mirando al reves justo cuando Kath se le
+    paraba a la derecha. No es un problema de orden (cambiarle el nombre a la
+    fila no la da vuelta) y arreglado a mano en el PNG se pierde en cuanto
+    alguien vuelva a correr el script, que es lo que este archivo existe para
+    evitar.
+
+    Se espeja CUADRO POR CUADRO y no la banda entera: dar vuelta la fila de una
+    tambien invierte el orden de los cuadros y la caminata sale para atras."""
+    cuales = cfg.get('espejar')
+    if not cuales:
+        return img
+    nombres = cfg.get('orden', DIRS)
+    faltan = [c for c in cuales if c not in nombres]
+    if faltan:
+        raise SystemExit(f'   "espejar" nombra filas que no existen: {", ".join(faltan)}.\n'
+                         f'   Las que hay: {", ".join(str(n) for n in nombres)}')
+
+    cols = cfg['columnas']
+    cw, ch = cfg['celda']
+    out = img.copy()
+    for c in cuales:
+        f = nombres.index(c)
+        for col in range(cols):
+            caja = (col * cw, f * ch, (col + 1) * cw, (f + 1) * ch)
+            out.paste(img.crop(caja).transpose(Image.FLIP_LEFT_RIGHT), caja)
+    print(f'   espejadas las filas: {", ".join(cuales)}')
+    return out
+
+
+def _achicar(img, destino_px):
+    """Baja una hoja grande a la grilla del juego sin ensuciar los bordes.
+
+    El detalle es que hay que promediar el color MULTIPLICADO POR EL ALFA. Un
+    pixel transparente igual tiene un RGB abajo (el gris del damero que se acaba
+    de borrar), y promediando a secas ese gris entra en la mezcla y deja un halo
+    claro alrededor de cada dibujo. Una hoja de 1792 px que baja a 96 promedia
+    ~19 px por pixel destino, asi que el halo no es sutil: se come el contorno.
+
+    Con el alfa premultiplicado, lo transparente pesa cero. Despues se
+    des-premultiplica y se corta el alfa duro, que es lo que le devuelve el filo
+    al pixel art."""
+    arr = np.array(img).astype(np.float64)
+    alfa = arr[:, :, 3:4] / 255.0
+    premul = np.concatenate([arr[:, :, :3] * alfa, arr[:, :, 3:4]], axis=2)
+    chica = np.array(Image.fromarray(premul.astype(np.uint8), 'RGBA')
+                     .resize(destino_px, Image.Resampling.BOX)).astype(np.float64)
+
+    a = chica[:, :, 3:4] / 255.0
+    rgb = np.divide(chica[:, :, :3], np.where(a > 0, a, 1))
+    salida = np.zeros(chica.shape, dtype=np.uint8)
+    salida[:, :, :3] = np.clip(rgb, 0, 255).astype(np.uint8)
+    salida[:, :, 3] = np.where(chica[:, :, 3] >= 115, 255, 0)
+    return Image.fromarray(salida, 'RGBA')
+
+
 def modo_grilla(nombre, cfg, img):
     """Hoja en grilla pareja (Kath, el baile, Merli, Diego).
 
@@ -573,10 +655,11 @@ def modo_grilla(nombre, cfg, img):
 
     if img.size != destino_px:
         print(f'   {img.size[0]}x{img.size[1]} -> {destino_px[0]}x{destino_px[1]} (reescalada)')
-        img = img.resize(destino_px, Image.Resampling.BOX)
-        arr = np.array(img)
-        arr[:, :, 3] = np.where(arr[:, :, 3] >= 115, 255, 0)
-        img = Image.fromarray(arr, 'RGBA')
+        img = _achicar(img, destino_px)
+
+    # Antes de guardar y antes de la imagen de revision: lo que se mira en la
+    # revision tiene que ser lo mismo que va a dibujar el juego.
+    img = _espejar_filas(img, cfg)
 
     salida = os.path.join(DEST, cfg['salida'])
     cuantizar(img, cfg.get('colores'), cfg.get('dither', True)).save(

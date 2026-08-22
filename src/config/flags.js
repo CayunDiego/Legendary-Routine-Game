@@ -9,6 +9,7 @@
  *  trabajan sobre OBJETOS ya filtrado, así que no hay que tocar nada más.
  * ------------------------------------------------------------------------- */
 export const FLAGS = {
-  /* Diego, el personaje del living que informa cómo viene el día. */
-  diego: false,
+  /* Diego, parado afuera de la casa. Informa cómo viene el día y es el único
+     que toma las misiones secundarias (las que Kath escribe ella). */
+  diego: true,
 };
