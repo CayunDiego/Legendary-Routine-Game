@@ -1,5 +1,6 @@
 import Canvas from './Canvas.jsx';
 import Reloj from './Reloj.jsx';
+import PomodoroReloj from './PomodoroReloj.jsx';
 import Efectos from './Efectos.jsx';
 import Dialogo from './Dialogo.jsx';
 import TituloScreen from './TituloScreen.jsx';
@@ -10,6 +11,7 @@ export default function Escena({ cargando, onEmpezar }) {
     <main id="escena">
       <Canvas />
       <Reloj />
+      <PomodoroReloj />
       <Efectos />
       <Dialogo />
       <TituloScreen onEmpezar={onEmpezar} />

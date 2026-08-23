@@ -4,6 +4,7 @@ import { ANIMOS } from '../config/animos.js';
 import { CARTAS } from '../config/cartas.js';
 import { COMPANERO } from '../config/companero.js';
 import { EXTRA, FRASES_SIN_EXTRA, FRASES_CON_EXTRA } from '../config/extras.js';
+import { POMODORO, FRASES_FOCO, FRASES_PAUSA } from '../config/pomodoro.js';
 
 import { TILE } from '../engine/drawing.js';
 import { construirTiles } from '../engine/tiles.js';
@@ -14,6 +15,7 @@ import {
   conectar, jugadora, bicho, input,
   construirMundo, objetoFrente, ajustarCanvas, actualizarCamara, registrarCola,
   bailar, BAILE, animarEclosionHuevo,
+  sentarse, levantarse, estaSentada,
 } from '../engine/motor.js';
 import { TECLAS_DIR, TECLAS_A, TECLAS_B, TECLAS_MENU, pilaDir, pintarDpad } from '../engine/input.js';
 import { $ } from '../dom.js';
@@ -23,6 +25,8 @@ import {
   misionPorId, hechoHoy, horasDe, contarHechasHoy, progresoDelDia, completarMision,
   horaBonita, fechaHoraBonita,
   extrasDeHoy, cupoExtras, agregarExtra,
+  pomodoroEnCurso, pomodorosDeHoy,
+  arrancarPomodoro, cortarPomodoro, cerrarFasePomodoro, relojPomodoro,
   etapaBicho, puedeEclosionar, nombreBicho,
   buscarDisfrazEnCesped,
 } from '../state/gameLogic.js';
@@ -56,23 +60,86 @@ function interactuar(o) {
     case 'inodoro': accionInodoro(); break;
     case 'espejo': accionEspejo(); break;
     case 'diego': accionDiego(); break;
+    case 'compu': accionSilla(o); break;
+    case 'sillon': accionSillon(o); break;
   }
 }
 
-/* La notebook del cuarto: abre el panel de progreso */
+/* La notebook del cuarto: el progreso y el pomodoro.
+   El texto cambia según si hay un pomodoro corriendo, porque la notebook es el
+   único lugar del mapa desde donde se lo maneja: si no dijera nada, con el
+   reloj andando abrirla parecería no tener nada que ver con el reloj. */
 function accionNotebook() {
   const p = progresoDelDia();
+  const pomo = pomodoroEnCurso();
+
+  const cabeza = pomo
+    ? `💻 Tu notebook\n${POMODORO.icono} ${pomo.fase === 'foco' ? 'Pomodoro andando' : 'Estás en la pausa'}: quedan ${relojPomodoro(pomo.restaMs)}.`
+    : `💻 Tu notebook\nLa pantalla muestra todos tus números.\n\nHoy: ${p.hechas}/${p.total} · Nivel ${EST.nivel} · Racha ${EST.racha} 🔥`;
+
   dialogo([{
-    t: `💻 Tu notebook\nLa pantalla muestra todos tus números.\n\nHoy: ${p.hechas}/${p.total} · Nivel ${EST.nivel} · Racha ${EST.racha} 🔥`,
+    t: cabeza,
     opciones: [
       { txt: 'Ver el progreso', cb: () => abrirMenu('progreso') },
+      {
+        txt: pomo ? `${POMODORO.icono} Ver el pomodoro` : `${POMODORO.icono} Arrancar un pomodoro`,
+        cb: () => abrirMenu('pomodoro'),
+      },
       { txt: 'Cerrarla', cb: () => { } }
     ]
   }]);
 }
 
-/* La tele del cuarto: el resumen del día en tono de noticiero */
+/* --- los asientos ---------------------------------------------------------
+ *
+ *  Sentarse es del motor (motor.js#sentarse): mueve a Kath a la casilla del
+ *  mueble y la dibuja con la hoja de sentada. Lo que agrega juego.js es el
+ *  para qué — en la silla, la compu; en el sillón, la tele — y el aviso de
+ *  cómo se levanta, que es lo único que no se adivina solo.
+ * ------------------------------------------------------------------------- */
+
+/* Cómo levantarse. Va una sola vez por sesión y no en cada diálogo: repetirlo
+   cada vez que se sienta lo convierte en un trámite. */
+let avisoLevantarse = false;
+
+function comoLevantarse() {
+  if (avisoLevantarse) return '';
+  avisoLevantarse = true;
+  return '\n\n(Para pararte, movete o tocá B.)';
+}
+
+/* La silla del escritorio. Sentada queda mirando la notebook, así que desde
+   acá el botón A la abre: por eso el diálogo no repite el menú de la compu,
+   sólo la sienta y le dice que la tiene enfrente. */
+function accionSilla(o) {
+  if (!sentarse(o)) return;
+  const pomo = pomodoroEnCurso();
+  const t = pomo
+    ? `Te sentás a la compu.\n${POMODORO.icono} ${pomo.fase === 'foco' ? 'El pomodoro sigue andando' : 'Seguís en la pausa'}: quedan ${relojPomodoro(pomo.restaMs)}.`
+    : `Te sentás a la compu.\nLa notebook está justo enfrente: tocá A para abrirla.${comoLevantarse()}`;
+  dialogo([{ t }]);
+}
+
+/* El sillón del living. Sentarse acá es ponerse a ver la tele, así que arranca
+   el mismo noticiero que la tele del cuarto (colaTele) sin tener que ir hasta
+   allá. Queda de espaldas, mirando la tele, con el respaldo del sillón
+   tapándola de la nuca para abajo (ver `tapa` en config/mapa.js). */
+function accionSillon(o) {
+  if (!sentarse(o)) return;
+  dialogo([
+    { t: `Te tirás en el sillón y prendés la tele.${comoLevantarse()}` },
+    ...colaTele(),
+  ]);
+}
+
+/* La tele del cuarto: el resumen del día en tono de noticiero. La cola se arma
+   aparte porque la usan dos lugares — la tele colgada del dormitorio y el
+   sillón del living, donde Kath se sienta a mirarla. */
 function accionTele() {
+  dialogo(colaTele());
+}
+
+function colaTele() {
   const p = progresoDelDia();
   const hechas = contarHechasHoy();
   let nota;
@@ -93,7 +160,7 @@ function accionTele() {
     cola.push({ t: `📺 "En deportes: ${EST.racha} ${EST.racha === 1 ? 'día' : 'días'} seguidos de racha. Un récord que sigue creciendo."` });
   }
   cola.push({ t: 'Volvés a poner Hello Kitty. Obvio.' });
-  dialogo(cola);
+  return cola;
 }
 
 function accionMision(id) {
@@ -405,6 +472,91 @@ function accionCompanero(o) {
 
 
 /* ============================================================================
+ *  POMODORO
+ *
+ *  El estado y el reloj viven en gameLogic (que no espera: mira la hora). Acá
+ *  está el único latido que lo consulta, y lo que pasa cuando una fase cierra.
+ *
+ *  El latido es un setInterval y NO el bucle de render a propósito: el bucle se
+ *  frena solo cuando la pestaña deja de estar visible, que es justo el rato en
+ *  que Kath está trabajando con la pantalla apagada. Un segundo alcanza y
+ *  sobra — cerrarFasePomodoro() sale enseguida si no venció nada.
+ * ==========================================================================*/
+
+/* Lo que Kath elige en la pestaña. Cuando arranca un pomodoro estando parada
+   frente a la silla, se sienta sola: "arrancar a trabajar" y "sentarse a la
+   compu" son la misma cosa, y hacérselo hacer a mano es un paso de más. */
+function empezarPomodoro(ratoId) {
+  const pomo = arrancarPomodoro(ratoId);
+  sonar('ok');
+  cerrarMenu();
+  const silla = objetoFrente();
+  if (silla && silla.accion === 'compu') sentarse(silla);
+  dialogo([{
+    t: `${POMODORO.icono} ${pomo.rato.label} · ${pomo.rato.foco} minutos.\nArrancá. Yo te aviso cuando se termine.`,
+  }]);
+  return pomo;
+}
+
+function frenarPomodoro() {
+  if (!cortarPomodoro()) return;
+  sonar('menu');
+  dialogo([{ t: `${POMODORO.icono} Cortado.\nNo pasa nada: el rato que estuviste igual lo estuviste.` }]);
+}
+
+/* Momentos en los que el aviso del pomodoro NO puede aparecer: el festejo se
+   muestra con dialogo(), y dialogo() se lleva puesto lo que hubiera abierto.
+   En la portada saldría antes de empezar a jugar; encima del formulario de las
+   secundarias le borraría a Kath lo que está escribiendo; y arriba de otro
+   diálogo le cortaría la frase por la mitad.
+
+   No se pierde nada: la fase no se cierra y el latido de un segundo después lo
+   vuelve a intentar. El reloj sigue siendo la hora, así que esperar no le mueve
+   un minuto a nada. */
+const MODOS_SIN_AVISO = ['titulo', 'modal', 'dialogo'];
+
+/* Corre una vez por segundo. Casi siempre no hace nada. */
+function revisarPomodoro() {
+  if (MODOS_SIN_AVISO.includes(getModo())) return;
+  const ev = cerrarFasePomodoro();
+  if (!ev) return;
+
+  // Un pomodoro que venció hace horas no se festeja: Kath no estaba (ver
+  // GRACIA_POMO_MS). Se lo lleva el cierre y no se dice nada.
+  if (ev.abandonado) return;
+
+  if (ev.fase === 'pausa') {
+    sonar('menu');
+    mostrarBanner(`${POMODORO.icono} ${FRASES_PAUSA[pomodorosDeHoy().length % FRASES_PAUSA.length]}`, 6000);
+    return;
+  }
+
+  // Terminó un bloque de foco: se para de la silla sola. La pausa es pararse.
+  levantarse();
+  sonar('ok');
+  if (ev.pago) mostrarRecompensa(ev.reg.xp, ev.reg.oro);
+
+  const remate = FRASES_FOCO[Math.min(ev.hoy, FRASES_FOCO.length) - 1];
+  const cola = [{
+    t: `${POMODORO.icono} ¡${ev.rato.foco} minutos de foco!\n${remate}\n\nAhora ${ev.rato.pausa} de pausa.`,
+    premio: ev.pago ? `+${ev.reg.xp} XP   +${ev.reg.oro} 💰` : null,
+    fanfarria: true,
+  }];
+  if (!ev.pago) {
+    cola.push({ t: `Por hoy ya cobraste ${POMODORO.porDia} pomodoros, así que este no paga.\nSeguí usándolo igual: para eso está.` });
+  }
+  if (ev.subio) {
+    const nivelAntes = EST.nivel - ev.subio;
+    for (let i = 0; i < ev.subio; i++) {
+      cola.push({ t: `¡SUBISTE AL NIVEL ${nivelAntes + i + 1}!\n${fraseNivel(nivelAntes + i + 1)}`, fanfarria: true });
+    }
+    agregarEvolucion(cola, nivelAntes, EST.nivel);
+  }
+  dialogo(cola);
+}
+
+
+/* ============================================================================
  *  MENÚ  (la interfaz la dibuja components/Menu/Menu.jsx)
  * ==========================================================================*/
 function abrirMenu(p) {
@@ -439,7 +591,14 @@ function pulsarA() {
   if (getModo() === 'menu') return;
   if (getModo() === 'titulo') { empezar(); return; }
   const o = objetoFrente();
+  // Sentada en la silla tiene la notebook enfrente, así que A la sigue
+  // abriendo. El único caso raro sería volver a tocar el asiento estando
+  // sentada encima, y eso no pasa: el asiento le queda abajo, no adelante.
   if (o) { ultimaA = 0; sonar('menu'); interactuar(o); return; }
+
+  // Sentada y sin nada enfrente (el sillón), A la para. Sin esto el doble
+  // toque la pondría a bailar sentada, que es exactamente lo que se ve.
+  if (estaSentada()) { ultimaA = 0; levantarse(); return; }
 
   const ahora = Date.now();
   if (ahora - ultimaA <= DOBLE_A_MS) { ultimaA = 0; bailar(BAILE.vueltas); }
@@ -451,6 +610,9 @@ function pulsarB() {
   if (getModo() === 'modal') { cerrarModal(); return; }
   if (getModo() === 'dialogo') { cerrarDialogo(); return; }
   if (getModo() === 'menu') { cerrarMenu(); return; }
+  // Pararse le gana a abrir el menú: B es "volver", y estando sentada lo que
+  // se quiere dejar es la silla, no la pantalla.
+  if (getModo() === 'juego' && estaSentada()) { levantarse(); return; }
   if (getModo() === 'juego') abrirMenu('misiones');
 }
 
@@ -616,9 +778,20 @@ function iniciar() {
   ajustarCanvas();
   actualizarCamara(true);
 
+  /* El latido del pomodoro. Un segundo: cerrarFasePomodoro() sale en dos
+     comparaciones si no venció nada, y así el aviso llega cuando se termina y
+     no hasta un minuto después. */
+  setInterval(revisarPomodoro, 1000);
+
   // si el teléfono estuvo dormido y cambió el día, refrescamos
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && chequearDia()) {
+    if (document.visibilityState !== 'visible') return;
+    /* El navegador frena o ralentiza los setInterval de una pestaña escondida,
+       que es justo lo que pasa mientras Kath trabaja con la pantalla apagada.
+       Al volver hay que cerrar a mano lo que venció mientras tanto, sin
+       esperar al próximo latido. */
+    revisarPomodoro();
+    if (chequearDia()) {
       dialogo([{ t: `Día nuevo, ${CONFIG.jugadora}.
 Las misiones se reiniciaron. ${EST.racha > 0 ? `Racha: ${EST.racha} 🔥` : ''}` }]);
     }
@@ -639,4 +812,5 @@ Las misiones se reiniciaron. ${EST.racha > 0 ? `Racha: ${EST.racha} 🔥` : ''}`
 export {
   iniciar, empezar, pulsarA, pulsarB, abrirMenu, cerrarMenu, armarTeclado, dialogo,
   guardarExtra,
+  empezarPomodoro, frenarPomodoro, revisarPomodoro,
 };

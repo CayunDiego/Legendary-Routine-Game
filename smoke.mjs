@@ -57,8 +57,8 @@ function elStub(id, cls = '') {
 const cache = new Map();
 const oyentesDoc = new Map();
 
-/* Las cinco pestañas del menú, para poder clickearlas. */
-const tabs = ['misiones', 'progreso', 'premios', 'compa', 'placard', 'ajustes'].map((p) => {
+/* Las pestañas del menú, para poder clickearlas. */
+const tabs = ['misiones', 'progreso', 'pomodoro', 'premios', 'compa', 'placard', 'ajustes'].map((p) => {
   const t = elStub('tab-' + p, 'tab');
   t.dataset = { p };
   return t;
@@ -577,6 +577,132 @@ paso('mapa: ningun mueble tapa una puerta ni pisa a otro mueble', () => {
   if (puertas < 6) throw new Error('se perdieron puertas del mapa: ' + puertas);
 });
 
+/* ---------------------------------------------------------------------------
+ *  Sentarse (la silla del escritorio y los sillones del living).
+ *
+ *  Lo delicado no es la pose: es que Kath queda parada ENCIMA de una casilla
+ *  solida. Si algo sale mal levantandose, queda adentro del mueble para
+ *  siempre, y ese es un guardado roto que no se arregla jugando.
+ * ------------------------------------------------------------------------- */
+const silla = mapaCfg.OBJETOS.find((o) => o.accion === 'compu');
+const sillon = mapaCfg.OBJETOS.find((o) => o.accion === 'sillon');
+
+/* La deja parada en la casilla `desde`, mirando al mueble. Devuelve el objeto
+   que le queda enfrente, que es lo que recibe sentarse(). */
+function pararseFrenteA(mueble, desde, dir) {
+  uiSt.setModo('juego');
+  motor.input.dir = -1;
+  motor.jugadora.moviendo = false;
+  motor.jugadora.asiento = null;
+  motor.jugadora.tx = desde.x; motor.jugadora.ty = desde.y;
+  motor.jugadora.px = desde.x * 48; motor.jugadora.py = desde.y * 48;
+  motor.jugadora.dir = dir;
+  const enfrente = motor.objetoFrente();
+  if (enfrente !== mueble) throw new Error('no quedo con el mueble enfrente');
+  return enfrente;
+}
+
+paso('sentarse: la silla esta justo abajo de la notebook', () => {
+  const nb = mapaCfg.OBJETOS.find((o) => o.accion === 'progreso');
+  if (!silla) throw new Error('no hay silla en el mapa');
+  igual(silla.x, nb.x, 'misma columna que la notebook');
+  igual(silla.y, nb.y + 1, 'una casilla abajo');
+  igual(silla.mira, 3, 'sentada mira para arriba, o sea a la notebook');
+});
+
+paso('sentarse: se sienta en la casilla del mueble y vuelve a la suya', () => {
+  const desde = { x: silla.x, y: silla.y + 1 };
+  const mueble = pararseFrenteA(silla, desde, 3);
+  if (!motor.sentarse(mueble)) throw new Error('no se pudo sentar');
+  if (!motor.estaSentada()) throw new Error('no quedo marcada como sentada');
+  igual(motor.jugadora.tx + ',' + motor.jugadora.ty, silla.x + ',' + silla.y, 'quedo en la silla');
+  igual(motor.jugadora.dir, silla.mira, 'mirando para donde dice el mapa');
+
+  if (!motor.levantarse()) throw new Error('no se pudo levantar');
+  igual(motor.jugadora.tx + ',' + motor.jugadora.ty, desde.x + ',' + desde.y, 'volvio a su casilla');
+  if (!motor.tilePasable(motor.jugadora.tx, motor.jugadora.ty)) {
+    throw new Error('quedo parada adentro de algo solido');
+  }
+});
+
+paso('sentarse: sentada no camina, y la primera flecha la para', () => {
+  const desde = { x: silla.x, y: silla.y + 1 };
+  motor.sentarse(pararseFrenteA(silla, desde, 3));
+  const enLaSilla = { tx: motor.jugadora.tx, ty: motor.jugadora.ty };
+
+  motor.input.dir = 3;                 // para arriba, contra la notebook
+  motor.actualizarJugadora(16);
+  if (motor.estaSentada()) throw new Error('la flecha no la levanto');
+  igual(motor.jugadora.tx + ',' + motor.jugadora.ty, desde.x + ',' + desde.y, 'se paro donde estaba');
+  if (enLaSilla.ty !== silla.y) throw new Error('nunca llego a sentarse');
+  motor.input.dir = -1;
+});
+
+paso('sentarse: sentada no baila', () => {
+  motor.sentarse(pararseFrenteA(silla, { x: silla.x, y: silla.y + 1 }, 3));
+  motor.jugadora.bailando = false;
+  motor.actualizarJugadora(motor.BAILE.esperaMs + 1);
+  if (motor.jugadora.bailando) throw new Error('se puso a bailar sentada');
+  motor.levantarse();
+});
+
+paso('sentarse: B la para en vez de abrir el menu', () => {
+  motor.sentarse(pararseFrenteA(silla, { x: silla.x, y: silla.y + 1 }, 3));
+  mod.pulsarB();
+  if (motor.estaSentada()) throw new Error('siguio sentada');
+  igual(uiSt.getModo(), 'juego', 'y no abrio el menu');
+});
+
+paso('sentarse: los sillones miran a la tele, y Kath tambien', () => {
+  // La razon de ser del sillon es sentarse a ver la tele. Que la pose apunte
+  // para otro lado no rompe nada que explote, asi que sin este paso se puede
+  // dar vuelta sin que nadie se entere hasta verlo jugando.
+  const tele = mapaCfg.OBJETOS.find((o) => o.art === 'tv');
+  if (!tele) throw new Error('no hay tele en el living');
+  for (const s of mapaCfg.OBJETOS.filter((o) => o.accion === 'sillon')) {
+    if (s.y <= tele.y) throw new Error(`el sillon (${s.x},${s.y}) no esta abajo de la tele`);
+    igual(s.mira, 3, `el sillon (${s.x},${s.y}) sienta a Kath mirando para arriba`);
+    if (!s.tapa) throw new Error('sin `tapa` el respaldo no la dibuja encima y se le ve la silla del sprite');
+  }
+});
+
+paso('sentarse: en el sillon se sienta en la mitad a la que se acerco', () => {
+  if (!sillon) throw new Error('no hay sillon con accion en el mapa');
+  // El sillon mide dos casillas: se prueban las dos, acercandose por arriba.
+  for (const dx of [0, 1]) {
+    const desde = { x: sillon.x + dx, y: sillon.y - 1 };
+    motor.sentarse(pararseFrenteA(sillon, desde, 0));
+    igual(motor.jugadora.tx, sillon.x + dx, `se sento en la mitad ${dx}`);
+    igual(motor.jugadora.dir, sillon.mira, 'mirando a camara, como esta dibujado el sillon');
+    motor.levantarse();
+  }
+});
+
+paso('sentarse: en medio de un paso no la deja deslizandose', () => {
+  // A se puede tocar con el paso a medio dar. `tx,ty` ya es el destino, asi que
+  // el mueble de enfrente es el correcto, pero el paso queda abierto: si no se
+  // cierra, al levantarse retoma la interpolacion desde donde estaba antes.
+  const desde = { x: silla.x, y: silla.y + 1 };
+  const mueble = pararseFrenteA(silla, desde, 3);
+  motor.jugadora.moviendo = true;
+  motor.jugadora.t = 0;
+  motor.jugadora.desdeX = 0; motor.jugadora.desdeY = 0;
+
+  if (!motor.sentarse(mueble)) throw new Error('no se sento con el paso a medias');
+  if (motor.jugadora.moviendo) throw new Error('quedo el paso abierto');
+
+  motor.levantarse();
+  motor.actualizarJugadora(16);
+  igual(motor.jugadora.px, desde.x * 48, 'no se deslizo en x');
+  igual(motor.jugadora.py, desde.y * 48, 'no se deslizo en y');
+});
+
+paso('sentarse: no se sienta en algo que no tiene enfrente', () => {
+  pararseFrenteA(silla, { x: silla.x, y: silla.y + 1 }, 3);
+  if (motor.sentarse(sillon)) throw new Error('se sento en un sillon que estaba en otro cuarto');
+  if (motor.estaSentada()) throw new Error('quedo sentada igual');
+});
+
 const { EXTRA } = await vite.ssrLoadModule('/src/config/extras.js');
 const dibujo = await vite.ssrLoadModule('/src/engine/drawing.js');
 
@@ -785,6 +911,167 @@ paso('secundarias: guardarla cierra el formulario y lo festeja', () => {
   dlg.cerrarDialogo();
 });
 
+/* ---------------------------------------------------------------------------
+ *  El pomodoro.
+ *
+ *  Todo el asunto es que el reloj es de PARED: se guarda un instante futuro y
+ *  se compara contra Date.now(). Eso es lo que lo hace servir con el juego
+ *  cerrado, y también lo que lo vuelve fácil de romper — un pomodoro que se
+ *  cierra dos veces paga dos veces, y uno que venció hace tres días no tendría
+ *  que festejar nada.
+ * ------------------------------------------------------------------------- */
+const { POMODORO } = await vite.ssrLoadModule('/src/config/pomodoro.js');
+
+/* Adelanta el reloj del pomodoro corriéndole el `hasta` para atrás. Es más
+   honesto que tocar Date.now(): mueve el dato guardado, que es exactamente lo
+   que pasa cuando el teléfono estuvo un rato apagado. */
+function vencerPomodoro(hace = 0) {
+  const est = logica.obtenerEstado();
+  est.pomo.hasta = Date.now() - hace;
+}
+
+paso('pomodoro: arranca, y lo que queda sale de la hora y no de un contador', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  igual(logica.pomodoroEnCurso(), null, 'sin nada corriendo arranca en null');
+
+  const p = logica.arrancarPomodoro('clasico');
+  igual(p.fase, 'foco', 'arranca en foco');
+  igual(p.rato.foco, 25, 'el largo del clasico');
+  const quedan = Math.round(p.restaMs / 60000);
+  if (quedan !== 25) throw new Error(`quedaban ${quedan} minutos y tenian que ser 25`);
+  igual(logica.relojPomodoro(90 * 1000), '01:30', 'el mm:ss');
+  igual(logica.relojPomodoro(25 * 60 * 1000), '25:00', 'un pomodoro entero no arranca en 24:59');
+});
+
+paso('pomodoro: sin vencer no cierra nada', () => {
+  igual(logica.cerrarFasePomodoro(), null, 'todavia no');
+  if (!logica.pomodoroEnCurso()) throw new Error('se lo llevo puesto igual');
+});
+
+paso('pomodoro: al terminar el foco paga una vez y abre la pausa sola', () => {
+  const est = logica.obtenerEstado();
+  const oroAntes = est.oro;
+  vencerPomodoro();
+
+  const ev = logica.cerrarFasePomodoro();
+  igual(ev.fase, 'foco', 'cerro el foco');
+  igual(ev.pago, true, 'pago');
+  igual(est.oro, oroAntes + POMODORO.oro, 'el oro');
+  igual(est.oroGanado, POMODORO.oro, 'y lo ganado de toda la vida');
+  igual(logica.pomodorosDeHoy().length, 1, 'quedo anotado');
+  igual(logica.pomodoroEnCurso().fase, 'pausa', 'y arranco la pausa sola');
+
+  // El mismo bloque no se puede cobrar dos veces: es el error clasico de un
+  // reloj que se mira una vez por segundo.
+  igual(logica.cerrarFasePomodoro(), null, 'la pausa recien empezada no cierra');
+  igual(est.oro, oroAntes + POMODORO.oro, 'y no volvio a pagar');
+});
+
+paso('pomodoro: al terminar la pausa no arranca otro foco solo', () => {
+  vencerPomodoro();
+  const ev = logica.cerrarFasePomodoro();
+  igual(ev.fase, 'pausa', 'cerro la pausa');
+  igual(logica.pomodoroEnCurso(), null, 'y no encadeno nada: la proxima vuelta la decide ella');
+});
+
+paso('pomodoro: pasado el tope del dia sigue andando pero no paga', () => {
+  const est = logica.obtenerEstado();
+  while (logica.cupoPomodoros() > 0) {
+    logica.arrancarPomodoro('corto');
+    vencerPomodoro();
+    logica.cerrarFasePomodoro();
+    logica.cortarPomodoro();               // saltea la pausa
+  }
+  igual(logica.pomodorosDeHoy().length, POMODORO.porDia, 'el tope del dia');
+  const oroAntes = est.oro;
+
+  logica.arrancarPomodoro('corto');
+  vencerPomodoro();
+  const ev = logica.cerrarFasePomodoro();
+  igual(ev.pago, false, 'el que pasa el tope no paga');
+  igual(est.oro, oroAntes, 'y el oro no se movio');
+  igual(logica.pomodorosDeHoy().length, POMODORO.porDia + 1, 'pero queda anotado igual');
+  logica.cortarPomodoro();
+});
+
+paso('pomodoro: uno olvidado hace dias no paga ni festeja', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  const est = logica.obtenerEstado();
+
+  logica.arrancarPomodoro('clasico');
+  vencerPomodoro(3 * 24 * 60 * 60 * 1000);   // vencio hace tres dias
+  const ev = logica.cerrarFasePomodoro();
+  igual(ev.abandonado, true, 'se toma como abandonado');
+  igual(est.oro, 0, 'no pago');
+  igual(logica.pomodorosDeHoy().length, 0, 'no lo anoto');
+  igual(logica.pomodoroEnCurso(), null, 'y lo saco del medio');
+});
+
+paso('pomodoro: cortarlo no deja nada colgado', () => {
+  logica.arrancarPomodoro('largo');
+  igual(logica.cortarPomodoro(), true, 'corta');
+  igual(logica.pomodoroEnCurso(), null, 'no queda nada');
+  igual(logica.cortarPomodoro(), false, 'y cortar dos veces no rompe');
+});
+
+paso('pomodoro: arrancarlo frente a la silla la sienta sola', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  const mueble = pararseFrenteA(silla, { x: silla.x, y: silla.y + 1 }, 3);
+  if (mueble !== silla) throw new Error('no quedo frente a la silla');
+
+  uiSt.setModo('menu');
+  mod.empezarPomodoro('corto');
+  if (!motor.estaSentada()) throw new Error('arranco el pomodoro pero se quedo parada');
+  igual(motor.jugadora.ty, silla.y, 'quedo en la silla');
+  igual(uiSt.getModo(), 'dialogo', 'y el menu se cerro para contarlo');
+  dlg.cerrarDialogo();
+  logica.cortarPomodoro();
+  motor.levantarse();
+});
+
+paso('pomodoro: terminar el foco la para de la silla', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  pararseFrenteA(silla, { x: silla.x, y: silla.y + 1 }, 3);
+  uiSt.setModo('menu');
+  mod.empezarPomodoro('corto');
+  dlg.cerrarDialogo();
+
+  vencerPomodoro();
+  mod.revisarPomodoro();
+  if (motor.estaSentada()) throw new Error('la pausa la dejo sentada trabajando');
+  igual(logica.pomodorosDeHoy().length, 1, 'y quedo anotado');
+  dlg.cerrarDialogo();
+  logica.cortarPomodoro();
+});
+
+paso('fusion: el pomodoro que sigue andando no se apaga al sincronizar', () => {
+  const enCurso = { fase: 'foco', rato: 'clasico', desde: Date.now(), hasta: Date.now() + 600000 };
+  // El telefono lo arranco y se quedo callado; la tablet escribio despues.
+  const tel = partidaBase({ seq: 1, pomo: enCurso });
+  const tab = partidaBase({ seq: 9, pomo: null });
+  const f = fusion.fusionar(tel, tab);
+  if (!f.pomo) throw new Error('el que escribio ultimo le apago el reloj');
+  igual(f.pomo.hasta, enCurso.hasta, 'y quedo el mismo');
+
+  // Uno ya vencido no revive.
+  const viejo = partidaBase({ seq: 1, pomo: { ...enCurso, hasta: Date.now() - 60000 } });
+  igual(fusion.fusionar(viejo, tab).pomo, null, 'uno vencido no vuelve');
+});
+
+paso('fusion: los pomodoros se unen y no se duplican', () => {
+  const uno = { pid: 'p1', dia: '2026-08-15', ts: 100, minutos: 25, rato: 'clasico', xp: 8, oro: 4 };
+  const otro = { pid: 'p2', dia: '2026-08-15', ts: 300, minutos: 15, rato: 'corto', xp: 8, oro: 4 };
+  const a = partidaBase({ seq: 1, oroGanado: 100, pomodoros: [uno] });
+  const b = partidaBase({ seq: 2, oroGanado: 100, pomodoros: [otro, uno] });
+  const f = fusion.fusionar(a, b);
+  igual(f.pomodoros.length, 2, 'los dos, una sola vez');
+  igual(f.pomodoros[0].pid, 'p2', 'el mas nuevo primero');
+});
+
 paso('modal: mientras se escribe, A y B no juegan', () => {
   uiSt.abrirModal('extra');
   mod.pulsarA();
@@ -794,12 +1081,16 @@ paso('modal: mientras se escribe, A y B no juegan', () => {
   igual(uiSt.getModal(), null, 'y lo deja limpio');
 });
 
-paso('migracion v2 -> v3 no inventa horas ni secundarias', () => {
+paso('migracion v2 -> v4 no inventa horas, secundarias ni pomodoros', () => {
+  // Encadena dos pasos (v2->v3 y v3->v4), que es el caso que importa: una
+  // partida vieja de verdad se salta versiones.
   const viejo = { v: 2, nivel: 2, xp: 0, oro: 0, hoy: { cama: 1 }, canjeados: [] };
   const nuevo = logica.migrar(viejo);
-  igual(nuevo.v, 3, 'version');
+  igual(nuevo.v, logica.V_ACTUAL, 'version');
   igual(Object.keys(nuevo.hoyEn).length, 0, 'lo de hoy queda sin hora, no con una inventada');
   igual(nuevo.extras.length, 0, 'sin secundarias');
+  igual(nuevo.pomodoros.length, 0, 'sin pomodoros');
+  igual(nuevo.pomo, null, 'y sin ninguno andando');
   igual(nuevo.hoy.cama, 1, 'y la mision de hoy sigue estando');
 });
 
@@ -1135,6 +1426,11 @@ const { GameProvider: Provider } = await vite.ssrLoadModule('/src/state/GameCont
    toque el turno con algo adentro. */
 uiSt.abrirModal('extra');
 
+/* Y el reloj del pomodoro tampoco dibuja nada si no hay ninguno andando. Se
+   arranca uno para que le toque el turno con el reloj puesto, que es el único
+   estado en el que ese componente existe. */
+logica.arrancarPomodoro('clasico');
+
 for (const [nombre, ruta] of [
   ['App', '/src/App.jsx'],
   ['HUD', '/src/components/HUD.jsx'],
@@ -1144,12 +1440,14 @@ for (const [nombre, ruta] of [
   ['AyudaTeclas', '/src/components/AyudaTeclas.jsx'],
   ['Escena', '/src/components/Escena.jsx'],
   ['Reloj', '/src/components/Reloj.jsx'],
+  ['PomodoroReloj', '/src/components/PomodoroReloj.jsx'],
   ['ModalExtra', '/src/components/ModalExtra.jsx'],
   ['Canvas', '/src/components/Canvas.jsx'],
   ['Dialogo', '/src/components/Dialogo.jsx'],
   ['Menu', '/src/components/Menu/Menu.jsx'],
   ['TabMisiones', '/src/components/Menu/TabMisiones.jsx'],
   ['TabProgreso', '/src/components/Menu/TabProgreso.jsx'],
+  ['TabPomodoro', '/src/components/Menu/TabPomodoro.jsx'],
   ['TabPremios', '/src/components/Menu/TabPremios.jsx'],
   ['TabCompa', '/src/components/Menu/TabCompa.jsx'],
   ['TabPlacard', '/src/components/Menu/TabPlacard.jsx'],

@@ -323,7 +323,14 @@ def quitar_fondo(img, modo, tolerancia=30):
     definicion. Un damero aporta dos grises; un fondo plano, uno solo. Es un
     reemplazo por color, no un relleno desde el borde, asi que si el dibujo
     usa exactamente el mismo gris que el fondo le van a aparecer agujeros:
-    para eso esta la imagen de revision, que los muestra enseguida."""
+    para eso esta la imagen de revision, que los muestra enseguida.
+
+    'auto' tiene un limite conocido: pide que cada color de fondo ocupe al
+    menos el 5% del marco. Un damero con degrade suave —el de kath_sentada.png
+    trae los dos grises repartidos en decenas de tonos casi iguales— no llega a
+    ese 5% con ninguno, y la hoja sale con el fondo puesto. Para eso se pueden
+    escribir los colores a mano en el manifiesto: uno solo ([r, g, b]) o varios
+    ([[r, g, b], [r, g, b]]). Los intermedios los completa _con_mezclas()."""
     if modo in (None, False, 'no'):
         return img
     arr = np.array(img)
@@ -334,7 +341,9 @@ def quitar_fondo(img, modo, tolerancia=30):
         colores, cuentas = np.unique(borde[:, :3], axis=0, return_counts=True)
         elegidos = _con_mezclas(colores[cuentas >= borde.shape[0] * 0.05])
     else:
-        elegidos = np.array([modo], dtype=np.int16)  # un [r, g, b] a mano
+        # un [r, g, b] suelto, o una lista de varios
+        mano = modo if isinstance(modo[0], (list, tuple)) else [modo]
+        elegidos = _con_mezclas(np.array(mano, dtype=np.int16))
     rgb = arr[:, :, :3].astype(np.int16)
     for color in elegidos:
         dist = np.abs(rgb - color).sum(axis=2)

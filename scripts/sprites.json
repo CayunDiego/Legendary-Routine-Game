@@ -16,6 +16,11 @@
     "           modo bloques va una entrada por bloque; null = fila que no se usa.",
     "  fondo    'auto' saca el fondo mirando el marco de la imagen (damero gris,",
     "           gris plano). Si la hoja ya viene transparente, no hace nada.",
+    "           'auto' pide que cada color ocupe >=5% del marco: un damero con",
+    "           degrade suave se reparte en decenas de tonos, no llega a ese 5%",
+    "           y la hoja sale con el fondo puesto (paso justo con kath_sentada).",
+    "           Ahi se escriben a mano: [r,g,b] o [[r,g,b],[r,g,b]]. Los tonos",
+    "           intermedios los completa el script solo.",
     "  espejar  (solo grilla) filas que hay que dar vuelta horizontalmente, por",
     "           nombre. Para cuando el generador manda una pose mirando para el",
     "           lado equivocado. Se espeja cuadro por cuadro, asi que la",
@@ -90,6 +95,19 @@
     "celda": [24, 32],
     "fondo": "auto",
     "orden": ["abajo", "izquierda", "derecha", "arriba"]
+  },
+
+  "sentada": {
+    "fuente": "kath_sentada.png",
+    "salida": "kath_sentada.png",
+    "coords": "sentada",
+    "modo": "grilla",
+    "columnas": 4,
+    "filas": 4,
+    "celda": [24, 32],
+    "fondo": [[208, 207, 213], [150, 150, 160]],
+    "orden": ["abajo", "izquierda", "derecha", "arriba"],
+    "nota": "Kath sentada en la silla, para el pomodoro de la compu y para el sillon del living. Misma grilla que caminar y que el baile, asi que el motor cambia de hoja y nada mas. La silla viene dibujada DENTRO del sprite: por eso el motor esconde el mueble mientras ella esta sentada encima (ver motor.js#dibujarObjeto), si no se ven dos sillas superpuestas. Los cuatro cuadros de cada fila son el respiro de estar quieta, no una caminata."
   },
 
   "merli": {

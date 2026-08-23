@@ -294,5 +294,11 @@
   "h": 32,
   "cuadros": 4,
   "filas": 4
+ },
+ "sentada": {
+  "w": 24,
+  "h": 32,
+  "cuadros": 4,
+  "filas": 4
  }
 }

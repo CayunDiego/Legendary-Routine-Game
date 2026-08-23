@@ -16,6 +16,12 @@ import datos from './recortes.json';
    se pueden intercambiar uno por uno con los de caminar. */
 export const KATH = datos.kath;
 export const BAILE = datos.baile;
+
+/* Kath sentada: misma grilla que las dos de arriba, así que el motor sólo
+   cambia de hoja. Los cuatro cuadros no son una caminata sino el respiro de
+   estar quieta, y la silla viene dibujada adentro del sprite — por eso el
+   motor esconde el mueble que tiene abajo mientras está sentada. */
+export const SENTADA = datos.sentada;
 export const DIEGO = datos.diego;
 export const DIEGO_BAILE = datos.diego_baile;
 

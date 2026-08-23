@@ -1,7 +1,7 @@
 import { MAPA, SOLIDOS, OBJETOS, INICIO } from '../config/mapa.js';
-import { SPRITE_JUGADORA, SPRITE_BAILE, VIDEO_TELE, SPRITE_DIEGO, SPRITE_DIEGO_BAILE, SPRITE_MERLI, SPRITE_HUEVO, SPRITE_COMPANERO } from '../config/sprites.js';
+import { SPRITE_JUGADORA, SPRITE_BAILE, SPRITE_SENTADA, VIDEO_TELE, SPRITE_DIEGO, SPRITE_DIEGO_BAILE, SPRITE_MERLI, SPRITE_HUEVO, SPRITE_COMPANERO } from '../config/sprites.js';
 import { FLAGS } from '../config/flags.js';
-import { KATH, MERLI, COMPANERO_ANIM, HUEVO_IDLE, HUEVO_HATCH } from '../config/recortes.js';
+import { KATH, SENTADA, MERLI, COMPANERO_ANIM, HUEVO_IDLE, HUEVO_HATCH } from '../config/recortes.js';
 import { dentroDeZonaMerli, pesoTileMerli } from '../config/merli.js';
 /* niveles.js no importa nada, así que traerlo acá no arma el ciclo que sí
    armaría pedirle xpNecesaria() a gameLogic.js (ver el comentario de allá). */
@@ -52,6 +52,7 @@ const GIRO_MS = 75;   // pausa al girar sin moverse
 let cv, ctx, vpW = 0, vpH = 0, dpr = 1;
 let hojaSprite = null;              // sprite sheet de la jugadora
 let hojaBaile = null;               // hoja del baile (mismo formato que la de caminar)
+let hojaSentada = null;             // hoja de Kath sentada (idem: 4 cuadros x 4 direcciones)
 let hojaDiego = null;               // sprite sheet de Diego (mismo formato)
 let hojaDiegoBaile = null;          // el baile de Diego (misma grilla que el de Kath)
 let hojaMerli = null;               // hoja de Merlí (ver config/sprites.js)
@@ -167,7 +168,11 @@ const jugadora = {
   dir: INICIO.dir,
   moviendo: false, t: 0, desdeX: 0, desdeY: 0,
   paso: 0, giro: 0,
-  bailando: false, tBaile: 0, baileHasta: 0, quieta: 0, baileCoreo: 0
+  bailando: false, tBaile: 0, baileHasta: 0, quieta: 0, baileCoreo: 0,
+  /* Dónde estaba parada antes de sentarse, para devolverla ahí al levantarse:
+     { tx, ty, dir, mueble }. En null cuando está de pie, que es lo que mira
+     todo el resto del motor para saber si está sentada. */
+  asiento: null, tSentada: 0
 };
 
 const bicho = { px: 0, py: 0, dir: 0, visible: false, cola: [], tAnim: 0 };
@@ -348,7 +353,16 @@ function construirMundo() {
     for (let j = 0; j < art.th; j++) {
       for (let i = 0; i < art.tw; i++) {
         const k = (o.x + i) + ',' + (o.y + j);
-        objPorTile.set(k, o);
+        /* Un objeto plano NO le puede robar la casilla a uno de verdad. Las
+           alfombras se dibujan abajo de todo y por eso se pueden solapar con
+           los muebles —el chequeo de muebles encimados del smoke las saltea a
+           propósito—, pero acá adentro la última en cargarse ganaba, y el
+           mueble desaparecía del mapa de interacción: seguía dibujado y
+           sólido, y el botón A no lo veía más.
+           Pasó con la silla del escritorio, que cae adentro de la alfombra
+           grande del dormitorio. */
+        const previo = objPorTile.get(k);
+        if (!previo || !o.decor || previo.decor) objPorTile.set(k, o);
         if (!o.decor && !o.pared) solido[o.y + j][o.x + i] = true;
       }
     }
@@ -430,8 +444,90 @@ function actualizarBaile(dt) {
   if (jugadora.quieta >= BAILE.esperaMs) bailar();
 }
 
+/* --- sentarse ------------------------------------------------------------
+ *
+ *  Kath se sienta en el mueble que tenga enfrente: la silla del escritorio y
+ *  los sillones del living. No es una animación ni un modo aparte — es la
+ *  misma jugadora, parada en la casilla del mueble y dibujada con otra hoja de
+ *  sprites (la de sentada, misma grilla que caminar).
+ *
+ *  Dos cosas que parecen detalles y no lo son:
+ *
+ *  - La casilla del asiento es la que tiene ENFRENTE, no una guardada en el
+ *    mapa. Así el mismo código sirve para la silla (1 casilla) y para los
+ *    sillones (2 casillas): se sienta en la mitad a la que se acercó, y no hay
+ *    que anotar en config/mapa.js qué mitad es cuál.
+ *
+ *  - Hacia dónde queda mirando lo decide el mueble (`mira`) y no la caminata.
+ *    Los dos asientos la sientan de espaldas (`mira:3`): en la silla porque
+ *    enfrente tiene la notebook, en el sillón porque enfrente tiene la tele.
+ *
+ *  - La hoja de sentada trae una SILLA dibujada adentro del sprite, así que
+ *    dos muebles no pueden convivir en la misma casilla. Cada asiento resuelve
+ *    eso de una manera y la elige el mapa con `tapa`:
+ *      · la silla del escritorio no se dibuja (la que se ve es la del sprite);
+ *      · el sillón sí se dibuja, y encima de ella: su respaldo es lo que le
+ *        tapa esa sillita. Por eso el sillón está dibujado de espaldas —el
+ *        respaldo abajo, contra la cámara— y por eso mide 14 filas de alto.
+ * ------------------------------------------------------------------------- */
+
+/* Cuánto dura cada uno de los 4 cuadros de la hoja de sentada. Es el respiro
+   de estar quieta —los brazos y el pelo se mueven un poco—, no una caminata:
+   a la velocidad del baile (180 ms) parece que tiembla. */
+const SENTADA_MS = 320;
+
+function estaSentada() { return !!jugadora.asiento; }
+
+/* Devuelve si se pudo. Falla si ya está sentada o si no tiene el mueble
+   enfrente, que es justo lo que pasa cuando el pomodoro arranca desde el menú
+   y Kath se fue caminando a otro lado: ahí no se sienta y listo. */
+function sentarse(mueble) {
+  if (!mueble || jugadora.asiento) return false;
+  const d = DIRS[jugadora.dir];
+  const sx = jugadora.tx + d.dx, sy = jugadora.ty + d.dy;
+  if (objetoEnTile(sx, sy) !== mueble) return false;
+
+  /* Puede llegar acá en medio de un paso: `tx,ty` ya es la casilla de destino
+     desde el primer cuadro, así que el mueble que tiene "enfrente" es el
+     correcto, pero el paso queda a medias. Hay que cerrarlo a mano — si no,
+     `moviendo` se queda prendido y al levantarse retoma la interpolación con
+     un origen viejo, o sea que se desliza sola desde donde estaba antes. */
+  jugadora.moviendo = false;
+  pararBaile();
+  jugadora.asiento = { tx: jugadora.tx, ty: jugadora.ty, dir: jugadora.dir, mueble };
+  jugadora.tx = sx; jugadora.ty = sy;
+  jugadora.px = sx * TILE; jugadora.py = sy * TILE;
+  jugadora.dir = mueble.mira === undefined ? jugadora.dir : mueble.mira;
+  jugadora.tSentada = 0;
+  return true;
+}
+
+/* La devuelve a la casilla desde donde se sentó. Vuelve a la pose con la que
+   llegó y no a la de sentada: levantarse mirando la pared del fondo, que es
+   para donde estaba mirando en la silla, se ve como un salto. */
+function levantarse() {
+  if (!jugadora.asiento) return false;
+  const { tx, ty, dir } = jugadora.asiento;
+  jugadora.asiento = null;
+  jugadora.tx = tx; jugadora.ty = ty;
+  jugadora.px = tx * TILE; jugadora.py = ty * TILE;
+  jugadora.dir = dir;
+  jugadora.quieta = 0;
+  return true;
+}
+
 /* --- movimiento ---------------------------------------------------------- */
 function actualizarJugadora(dt) {
+  /* Sentada no camina ni baila: la primera flecha la para y recién con la
+     siguiente vuelta del bucle da el paso. Ese cuadro de diferencia es a
+     propósito — sin él se levanta y arranca a caminar en el mismo frame, y no
+     se llega a ver que estaba sentada. */
+  if (jugadora.asiento) {
+    jugadora.tSentada += dt;
+    if (juego.juegoActivo() && input.dir >= 0) levantarse();
+    return;
+  }
+
   actualizarBaile(dt);
   if (jugadora.moviendo) {
     jugadora.t += dt;
@@ -619,9 +715,19 @@ function dibujar(dt) {
   for (const o of OBJETOS) {
     if (o.decor || o.oculto) continue;
     if (o.x + o.tw < x0 - 1 || o.x > x1 + 1 || o.y + o.th < y0 - 1 || o.y > y1 + 1) continue;
+    /* El mueble en el que Kath está sentada no se dibuja: la hoja de sentada
+       ya trae una silla adentro del sprite, y las dos juntas se ven como dos
+       sillas encimadas. La excepción son los asientos con `tapa` —los
+       sillones—, que sí se dibujan, y encima de ella: ver más abajo. */
+    if (jugadora.asiento && jugadora.asiento.mueble === o && !o.tapa) continue;
     lista.push({ tipo: 'obj', o, base: (o.y + o.th) * TILE });
   }
-  lista.push({ tipo: 'jug', base: (jugadora.py + TILE) });
+  /* Kath sentada tiene exactamente la misma base que el mueble —los dos
+     terminan en el borde de abajo de la casilla— y ese empate lo desempataba
+     el orden de la lista, o sea el azar. El -1 lo resuelve para siempre y en
+     el sentido que hace falta: el sillón se dibuja después que ella, y su
+     respaldo le tapa la silla del sprite. */
+  lista.push({ tipo: 'jug', base: (jugadora.py + TILE) - (jugadora.asiento ? 1 : 0) });
   if (bicho.visible) lista.push({ tipo: 'bicho', base: bicho.py + TILE - 1 });
   lista.push({ tipo: 'merli', base: merli.py + TILE - 1 });
   lista.sort((a, b) => a.base - b.base);
@@ -894,7 +1000,13 @@ function dibujarAura(cx, cy) {
 function dibujarJugadora() {
   const w = FRAME_W * ESC_JUG, h = FRAME_H * ESC_JUG;
   const dx = Math.round(jugadora.px - cam.x + TILE / 2 - w / 2);
-  const dy = Math.round(jugadora.py - cam.y + TILE - PIES * ESC_JUG - 3);
+  /* El sprite sobresale una fila de origen (3 px) por debajo de la casilla: los
+     pies están en la fila 30 de 32. Parada eso no se ve —es la sombra—, pero
+     sentada en el sillón esos 3 px son la punta de las patas de la silla que
+     trae el sprite, y asoman por debajo del respaldo que tendría que taparla.
+     Subirla esos 3 px la mete entera adentro del mueble. */
+  const hundir = jugadora.asiento && jugadora.asiento.mueble.tapa ? ESC_JUG : 0;
+  const dy = Math.round(jugadora.py - cam.y + TILE - PIES * ESC_JUG - 3) - hundir;
 
   // detrás de todo lo suyo: primero el aura, después la sombra y el sprite
   dibujarAura(dx + w / 2, dy + h * 0.5);
@@ -907,7 +1019,10 @@ function dibujarJugadora() {
 
   let f = 0, fila = jugadora.dir;
   let hoja = hojaSprite;
-  if (jugadora.bailando && hojaBaile) {
+  if (jugadora.asiento && hojaSentada) {
+    hoja = hojaSentada;
+    f = Math.floor(jugadora.tSentada / SENTADA_MS) % SENTADA.cuadros;
+  } else if (jugadora.bailando && hojaBaile) {
     hoja = hojaBaile;
     const paso = pasoBaile(jugadora.baileCoreo, jugadora.tBaile);
     f = paso.col;
@@ -1114,14 +1229,16 @@ function cargarSprite(listo) {
   Promise.all([
     cargarImagen(SPRITE_JUGADORA),
     cargarImagen(SPRITE_BAILE),
+    cargarImagen(SPRITE_SENTADA),
     cargarImagen(VIDEO_TELE),
     FLAGS.diego ? cargarImagen(SPRITE_DIEGO) : Promise.resolve(null),
     FLAGS.diego ? cargarImagen(SPRITE_DIEGO_BAILE) : Promise.resolve(null),
     cargarImagen(SPRITE_MERLI),
     cargarImagen(SPRITE_HUEVO),
     cargarImagen(SPRITE_COMPANERO),
-  ]).then(([sp, bl, tv, dg, dgb, mr, hv, cp]) => {
-    hojaSprite = sp; hojaBaile = bl; hojaTele = tv; hojaDiego = dg; hojaDiegoBaile = dgb;
+  ]).then(([sp, bl, st, tv, dg, dgb, mr, hv, cp]) => {
+    hojaSprite = sp; hojaBaile = bl; hojaSentada = st; hojaTele = tv;
+    hojaDiego = dg; hojaDiegoBaile = dgb;
     hojaMerli = mr; hojaHuevo = hv; hojaCompanero = cp;
     construirBicho();
     listo();
@@ -1162,5 +1279,6 @@ export {
   actualizarPersonajes,
   actualizarAura, auraActiva, actualizarHuevo,
   registrarCola, dibujar, bailar, BAILE, luzAmbiente,
+  sentarse, levantarse, estaSentada,
   animarEclosionHuevo,
 };

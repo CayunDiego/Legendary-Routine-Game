@@ -6,6 +6,7 @@ import { useAcciones } from '../../state/GameContext.jsx';
 import TabMisiones from './TabMisiones.jsx';
 import TabProgreso from './TabProgreso.jsx';
 import TabPremios from './TabPremios.jsx';
+import TabPomodoro from './TabPomodoro.jsx';
 import TabCompa from './TabCompa.jsx';
 import TabPlacard from './TabPlacard.jsx';
 import TabAjustes from './TabAjustes.jsx';
@@ -13,6 +14,10 @@ import TabAjustes from './TabAjustes.jsx';
 const TABS = [
   ['misiones', 'Hoy'],
   ['progreso', 'Progreso'],
+  // Va pegada a "Hoy" y no al final porque es de las que se abren seguido: se
+  // llega desde la notebook, pero también desde el menú en el medio de un
+  // pomodoro para mirar cuánto falta.
+  ['pomodoro', '🍅'],
   ['premios', 'Premios'],
   ['compa', 'Compa'],
   ['placard', 'Placard'],
@@ -51,6 +56,7 @@ export default function Menu() {
         <div id="menuCuerpo" ref={cuerpo}>
           {pestana === 'misiones' && <TabMisiones />}
           {pestana === 'progreso' && <TabProgreso />}
+          {pestana === 'pomodoro' && <TabPomodoro />}
           {pestana === 'premios' && <TabPremios />}
           {pestana === 'compa' && <TabCompa />}
           {pestana === 'placard' && <TabPlacard />}

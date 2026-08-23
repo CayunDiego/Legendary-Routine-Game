@@ -86,6 +86,32 @@ function fusionarExtras(a, b) {
     .slice(0, 200);   // el mismo tope que usa agregarExtra()
 }
 
+/* --- pomodoros --------------------------------------------------------------
+   Mismo caso que las secundarias: sólo crecen y cada bloque trae su `pid`. */
+function fusionarPomodoros(a, b) {
+  const porClave = new Map();
+  for (const x of [...(a || []), ...(b || [])]) {
+    if (!x || !x.ts) continue;
+    const k = x.pid || [x.dia, x.ts, x.rato].join('|');
+    if (!porClave.has(k)) porClave.set(k, x);
+  }
+  return [...porClave.values()]
+    .sort((x, y) => (Number(y.ts) || 0) - (Number(x.ts) || 0))
+    .slice(0, 300);   // el mismo tope que POMODORO.historia
+}
+
+/* El pomodoro EN CURSO no se puede resolver por quién escribió último: el
+   dispositivo donde Kath lo arrancó se queda callado justamente mientras ella
+   trabaja, así que el otro casi siempre escribe después y su `null` le apagaría
+   el reloj. Gana el que todavía no venció, y entre dos vivos, el que termina más
+   tarde — que es el que arrancó último, o sea el que ella está mirando. */
+function fusionarPomo(a, b) {
+  const ahora = Date.now();
+  const vivos = [a, b].filter((p) => p && Number(p.hasta) > ahora);
+  if (!vivos.length) return null;
+  return vivos.reduce((x, y) => (Number(y.hasta) > Number(x.hasta) ? y : x));
+}
+
 /* --- historial ------------------------------------------------------------ */
 /* Indexado por fecha, así que la unión es directa. Si los dos tienen el mismo
    día con distinto número, gana el mayor: uno de los dos no llegó a enterarse
@@ -224,6 +250,9 @@ function fusionar(a, b) {
   // Las secundarias no se archivan al cambiar el día: se unen siempre, sin
   // importar en qué día esté cada dispositivo.
   out.extras = fusionarExtras(a.extras, b.extras);
+  // Los pomodoros tampoco se archivan al cambiar el día.
+  out.pomodoros = fusionarPomodoros(a.pomodoros, b.pomodoros);
+  out.pomo = fusionarPomo(a.pomo, b.pomo);
 
   // --- oro: no se puede tomar el máximo -------------------------------------
   // El oro baja al canjear, así que el número en sí no dice quién está más

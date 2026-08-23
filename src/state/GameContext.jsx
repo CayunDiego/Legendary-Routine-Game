@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo } from 'react';
 import { CONFIG } from '../config/config.js';
 import {
   empezar, pulsarA, pulsarB, abrirMenu, cerrarMenu, dialogo,
+  empezarPomodoro, frenarPomodoro,
 } from '../game/juego.js';
 
 /* ---------------------------------------------------------------------------
@@ -28,6 +29,12 @@ export function GameProvider({ children }) {
     abrirMenu,
     cerrarMenu,
     dialogo,
+    /* El pomodoro lo maneja juego.js y no la pestaña: arrancar uno también
+       cierra el menú, sienta a Kath en la silla y abre un diálogo, que son
+       tres cosas de las que un componente de formulario no tiene por qué
+       enterarse. */
+    empezarPomodoro,
+    frenarPomodoro,
 
     /* Canjear un premio cierra el menú y muestra el cupón. */
     canjearPremio(p) {

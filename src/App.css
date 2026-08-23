@@ -436,6 +436,51 @@ a.btnPrim.deshabilitado{opacity:.5;box-shadow:0 3px 0 #6b6b7a;cursor:default}
 /* La fecha es el dato de fondo: la hora es la que se mira. */
 #reloj .pixTexto:first-child{opacity:.7}
 
+/* --- reloj del pomodoro -----------------------------------------------------
+   Justo abajo del reloj de pared y con los mismos digitos pixelados, porque son
+   dos relojes y tienen que leerse como dos relojes. Sale solo cuando hay un
+   pomodoro andando (components/PomodoroReloj.jsx), asi que no compite por lugar
+   con nada el resto del tiempo.
+
+   El color es lo unico que separa las dos fases: tomate mientras trabaja, verde
+   agua en la pausa. Sin texto de "FOCO" / "PAUSA" — el numero bajando ya dice
+   que algo esta corriendo, y a este tamano una palabra mas lo vuelve una
+   etiqueta. */
+#pomoReloj{
+  position:absolute;top:64px;left:8px;z-index:5;
+  display:flex;align-items:center;gap:5px;
+  padding:5px 8px;border-radius:9px;
+  background:rgba(13,13,24,.62);border:2px solid rgba(0,0,0,.55);
+  box-shadow:0 2px 0 rgba(0,0,0,.45);
+  pointer-events:none;
+}
+#pomoReloj.foco{color:#ff9d7a}
+#pomoReloj.pausa{color:#8ee0c8}
+#pomoReloj .pixTexto{display:block;fill:currentColor}
+#pomoReloj .pomoIcono{font-size:13px;line-height:1}
+
+/* --- pomodoro: la pestana ---------------------------------------------------
+   El reloj grande es el unico numero del juego que se mira de lejos y de
+   costado, apoyado el telefono al lado de la compu: por eso va enorme, con
+   tabular-nums para que no se mueva al cambiar de digito. */
+.pomoCaja{text-align:center}
+.pomoReloj{
+  font-size:44px;font-weight:900;line-height:1.1;margin:2px 0 8px;
+  font-variant-numeric:tabular-nums;color:#c2410c;letter-spacing:1px;
+}
+.pomoCaja.pausa .pomoReloj{color:#0f7a63}
+.pomoCaja .barra>div{background:linear-gradient(90deg,#ffb08a,#e8622a)}
+.pomoCaja.pausa .barra>div{background:linear-gradient(90deg,#8ee0c8,#2fa98c)}
+.pomoCaja .sub{margin-top:8px}
+/* "Cortar" no compite con los botones que arrancan algo: va suave y ancho,
+   como una salida y no como una accion mas del panel. */
+.btnAncho{
+  font:inherit;font-weight:800;font-size:13px;width:100%;margin-top:10px;
+  background:var(--crema2);border:2px solid #1d1d2e;border-radius:10px;
+  padding:10px;box-shadow:0 3px 0 #1d1d2e;color:#5c5148;
+}
+.btnAncho:active{transform:translateY(3px);box-shadow:none}
+
 /* --- misiones secundarias ---------------------------------------------------
    Mismo item que las misiones de la casa, otro color. Violeta y no verde a
    proposito: el verde de .item.ok ya quiere decir "esta cumplida", y estas

@@ -101,13 +101,30 @@ const ART_OBJ = {
     [6, 5, 4, 2, '#f0d9b8']
   ]},
 
+  /* El sillón, visto DE ATRÁS: el respaldo abajo (contra la cámara) y el
+     asiento arriba, o sea mirando al norte. Estuvo dibujado al revés hasta que
+     Kath se pudo sentar, y ahí quedó a la vista que el mueble contradecía al
+     cuarto: el mapa siempre los tuvo enfrentados a la chimenea y a la tele,
+     que están arriba.
+
+     Dado vuelta, el respaldo tapa a quien está sentada de la nuca para abajo.
+     Eso no es un efecto secundario, es para qué se dibujó así: la hoja de Kath
+     sentada trae una silla de madera adentro del sprite, y este respaldo es lo
+     que la esconde. De ahí que tenga 14 filas de alto —tiene que llegar hasta
+     la fila 2 para cubrir la silla entera— y que el motor dibuje el sillón
+     DESPUÉS de ella (ver el orden de dibujo en motor.js). */
   sofa: { tw: 2, th: 1, r: [
-    [0, 1, 32, 8, '#7183c9'], [0, 1, 32, 2, '#8496da'],
-    [0, 3, 4, 12, '#6374b8'], [28, 3, 4, 12, '#6374b8'],
-    [4, 9, 24, 6, '#8fa2e0'], [4, 9, 24, 1, '#a1b2ea'],
-    [15, 9, 1, 6, '#7183c9'],
-    [6, 3, 6, 5, '#f4a3bf'], [20, 3, 6, 5, '#f4a3bf'],
-    [2, 15, 3, 1, '#4c5a92'], [27, 15, 3, 1, '#4c5a92']
+    // lo que asoma por encima del respaldo: los almohadones y los dos cojines
+    [5, 0, 22, 3, '#8fa2e0'], [5, 0, 22, 1, '#a1b2ea'],
+    [8, 0, 6, 2, '#f4a3bf'], [18, 0, 6, 2, '#f4a3bf'],
+    // apoyabrazos, que sobresalen un poco del respaldo
+    [0, 1, 5, 15, '#6374b8'], [0, 1, 5, 1, '#8496da'],
+    [27, 1, 5, 15, '#6374b8'], [27, 1, 5, 1, '#8496da'],
+    // el respaldo
+    [4, 2, 24, 14, '#7183c9'], [4, 2, 24, 1, '#8496da'],
+    [15, 5, 1, 9, '#6374b8'],                                  // costura del medio
+    [4, 14, 24, 2, '#5f70b0'],
+    [2, 15, 3, 1, '#4c5a92'], [27, 15, 3, 1, '#4c5a92']        // patas
   ]},
 
   tv: { tw: 1, th: 1, r: [
@@ -121,6 +138,36 @@ const ART_OBJ = {
     [0, 9, 16, 6, '#a06a42'], [2, 10, 5, 4, '#8b5e3c'], [9, 10, 5, 4, '#8b5e3c'],
     [4, 2, 9, 4, '#c9526b'], [5, 3, 7, 2, '#f6efe2'], [4, 2, 9, 1, '#e0687f'],
     [13, 3, 1, 3, '#f7c948']
+  ]},
+
+  /* La silla del escritorio. Está copiada de la que Kath trae dibujada adentro
+     de su hoja de sentada (arte-fuente/kath_sentada.png): mismo alto —13 px
+     fuente, del respaldo a las patas—, mismo ancho de 10 y las patas apoyadas
+     en la última fila de la casilla. Eso importa porque las dos se ven una
+     detrás de la otra: cuando Kath se sienta, el motor esconde ESTA y la que
+     queda es la del sprite. Si no midieran igual, sentarse sería ver la silla
+     cambiar de tamaño.
+
+     Los colores son los del escritorio y la mesa (#c98f5a, #a06a42, #8b5e3c) y
+     no los del sprite —que trae sus propios marrones del generador— para que
+     se lea como un mueble más de la casa y no como algo pegado encima. */
+  silla: { tw: 1, th: 1, r: [
+    // travesaño de arriba (filas 18-22 del sprite)
+    [3, 2, 10, 5, '#241610'],
+    [4, 3, 8, 1, '#a06b41'],
+    [4, 4, 8, 2, '#875837'],
+    // los listones del respaldo (23-25): dos montantes a los costados, uno en
+    // el medio, y aire entre medio. Es el detalle que la hermana con la del
+    // sprite —ahí se ve el vestido rojo asomando entre los listones— y lo que
+    // la separa de una banqueta.
+    [3, 7, 3, 3, '#241610'], [7, 7, 2, 3, '#241610'], [10, 7, 3, 3, '#241610'],
+    [4, 7, 1, 3, '#875837'], [7, 7, 1, 3, '#875837'], [11, 7, 1, 3, '#875837'],
+    // asiento (26-27)
+    [3, 10, 10, 2, '#241610'],
+    [4, 10, 8, 1, '#8e5b38'],
+    // patas (28-31)
+    [4, 12, 3, 4, '#241610'], [9, 12, 3, 4, '#241610'],
+    [5, 13, 1, 2, '#5b3823'], [10, 13, 1, 2, '#5b3823'],
   ]},
 
   cuadro: { tw: 1, th: 1, r: [

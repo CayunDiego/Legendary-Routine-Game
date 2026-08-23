@@ -5,6 +5,7 @@ import { CARTAS } from '../config/cartas.js';
 import { COMPANERO } from '../config/companero.js';
 import { DISFRACES, PASOS_POR_HALLAZGO } from '../config/disfraces.js';
 import { EXTRA } from '../config/extras.js';
+import { POMODORO } from '../config/pomodoro.js';
 import { crearStore } from './store.js';
 import { xpNecesaria } from './niveles.js';
 import * as disco from './persistencia.js';
@@ -23,7 +24,7 @@ const CLAVE_GUARDADO = disco.CLAVE;
 
 /* Versión del formato de la partida. Si sube, hace falta una migración en
    MIGRACIONES que lleve de la anterior a esta. */
-const V_ACTUAL = 3;
+const V_ACTUAL = 4;
 
 const EST_INICIAL = () => ({
   v: V_ACTUAL,
@@ -62,6 +63,14 @@ const EST_INICIAL = () => ({
      Diego. [{eid, dia, texto, ts, xp, oro}], las más nuevas primero. No se
      vacían al cambiar el día — son un registro, no el contador del día. */
   extras: [],
+  /* Pomodoro en curso, o null. { fase:'foco'|'pausa', rato, desde, hasta }.
+     `hasta` es un Date.now() futuro y no un contador que baja: el reloj tiene
+     que seguir corriendo con el juego cerrado (ver config/pomodoro.js). */
+  pomo: null,
+  /* Bloques de foco terminados, los más nuevos primero:
+     [{ pid, dia, ts, minutos, rato, xp, oro }]. Como las secundarias, no se
+     vacían al cambiar el día: son un registro. */
+  pomodoros: [],
   sonido: true,
   primeraVez: true,
   // Última versión del juego que Kath ya vio. Vacía en una partida que ya
@@ -102,6 +111,16 @@ const MIGRACIONES = {
     e.hoyEn = {};
     e.extras = [];
     e.v = 3;
+    return e;
+  },
+  /* v3 -> v4: el pomodoro de la compu. No hay nada que reconstruir —una
+     partida vieja simplemente no hizo ninguno— pero el paso va igual: sin él
+     la partida seguiría diciendo que es v3 y la próxima migración de verdad
+     arrancaría desde el lugar equivocado. */
+  3: (e) => {
+    e.pomo = null;
+    e.pomodoros = [];
+    e.v = 4;
     return e;
   },
 };
@@ -411,6 +430,129 @@ function agregarExtra(texto) {
   return { xp: extra.xp, oro: extra.oro, subio, extra, hoy: extrasDeHoy().length };
 }
 
+/* --- pomodoro ------------------------------------------------------------- */
+/* El reloj de la compu. Todo lo que se guarda es un instante futuro (`hasta`),
+   así que lo que queda se calcula restando y el pomodoro sigue corriendo con
+   el juego cerrado. Nada de esto depende del bucle de render a propósito: ver
+   el comentario largo de config/pomodoro.js. */
+
+/* Pasado este rato desde que venció una fase, se toma como abandonada: no paga
+   y no festeja. Es para el pomodoro que Kath arrancó, se olvidó, y aparece tres
+   días después dando monedas y un cartel de "¡terminaste!" que no significa
+   nada. Cuatro horas es holgado para el caso real (arrancar, apagar la pantalla
+   para no distraerse, volver a la tarde) y corto para el olvido. */
+const GRACIA_POMO_MS = 4 * 60 * 60 * 1000;
+
+function ratoPomodoro(id) {
+  return POMODORO.ratos.find((r) => r.id === id)
+    || POMODORO.ratos.find((r) => r.id === POMODORO.porDefecto)
+    || POMODORO.ratos[0];
+}
+
+/* El pomodoro en curso con lo que le queda ya calculado, o null. Es lo que
+   miran la pestaña y el cartelito de la escena; ninguno de los dos toca EST. */
+function pomodoroEnCurso() {
+  const p = EST.pomo;
+  if (!p || !p.hasta) return null;
+  const rato = ratoPomodoro(p.rato);
+  const largoMs = (p.fase === 'pausa' ? rato.pausa : rato.foco) * 60000;
+  return {
+    fase: p.fase,
+    rato,
+    hasta: p.hasta,
+    largoMs,
+    restaMs: Math.max(0, p.hasta - Date.now()),
+  };
+}
+
+function pomodorosDeHoy() {
+  return EST.pomodoros.filter((p) => p && p.dia === EST.dia);
+}
+
+/* Cuántos bloques más pagan hoy. Pasado el tope el pomodoro sigue andando
+   igual —es un reloj, no una fábrica de monedas—, sólo deja de dar premio. */
+function cupoPomodoros() {
+  return Math.max(0, POMODORO.porDia - pomodorosDeHoy().length);
+}
+
+/* Arranca un bloque de foco. Pisa el que hubiera: elegir un largo nuevo con
+   uno corriendo es cambiar de idea, no un error. */
+function arrancarPomodoro(ratoId) {
+  const r = ratoPomodoro(ratoId);
+  const ahora = Date.now();
+  EST.pomo = { fase: 'foco', rato: r.id, desde: ahora, hasta: ahora + r.foco * 60000 };
+  guardar();
+  return pomodoroEnCurso();
+}
+
+function cortarPomodoro() {
+  if (!EST.pomo) return false;
+  EST.pomo = null;
+  guardar();
+  return true;
+}
+
+/* Cierra la fase que ya venció y devuelve qué pasó, o null si no venció nada.
+   La llama el reloj de game/juego.js una vez por segundo — acá no hay
+   temporizadores: este módulo mira la hora, no la espera.
+
+   Al terminar el foco arranca la pausa sola; al terminar la pausa no arranca
+   nada. Encadenar los focos solos convierte el pomodoro en una cinta de correr,
+   y es justo al revés: cada vuelta se decide de nuevo. */
+function cerrarFasePomodoro() {
+  const p = EST.pomo;
+  if (!p || !p.hasta) return null;
+  const ahora = Date.now();
+  if (ahora < p.hasta) return null;
+
+  const rato = ratoPomodoro(p.rato);
+  const fase = p.fase;
+
+  // Venció hace demasiado: se lo lleva puesto sin pagar ni festejar.
+  if (ahora - p.hasta > GRACIA_POMO_MS) {
+    EST.pomo = null;
+    guardar();
+    return { fase, rato, abandonado: true };
+  }
+
+  if (fase === 'pausa') {
+    EST.pomo = null;
+    guardar();
+    return { fase: 'pausa', rato };
+  }
+
+  // El cupo se mira ANTES de anotar el bloque, si no el sexto se cuenta a sí
+  // mismo y termina sin pagar.
+  const paga = cupoPomodoros() > 0;
+  const reg = {
+    pid: disco.uuid(),
+    dia: EST.dia,
+    ts: ahora,
+    minutos: rato.foco,
+    rato: rato.id,
+    xp: paga ? POMODORO.xp : 0,
+    oro: paga ? POMODORO.oro : 0,
+  };
+  EST.pomodoros.unshift(reg);
+  if (EST.pomodoros.length > POMODORO.historia) EST.pomodoros.length = POMODORO.historia;
+
+  const subio = darXP(reg.xp);
+  EST.oro += reg.oro;
+  EST.oroGanado = (Number(EST.oroGanado) || 0) + reg.oro;
+
+  EST.pomo = { fase: 'pausa', rato: rato.id, desde: ahora, hasta: ahora + rato.pausa * 60000 };
+  guardar();
+  return { fase: 'foco', rato, reg, subio, pago: paga, hoy: pomodorosDeHoy().length };
+}
+
+/* mm:ss de lo que queda. Redondea para arriba para que el reloj muestre el
+   minuto entero mientras dure: con Math.floor, un pomodoro de 25 arranca
+   diciendo 24:59 y parece que ya empezó tarde. */
+function relojPomodoro(ms) {
+  const seg = Math.max(0, Math.ceil(ms / 1000));
+  return String(Math.floor(seg / 60)).padStart(2, '0') + ':' + String(seg % 60).padStart(2, '0');
+}
+
 /* --- disfraces ------------------------------------------------------------ */
 /* Sortea un hallazgo entre lo que TODAVÍA no encontró. Se sortea sobre los que
    faltan y no sobre la lista entera para que el último accesorio no se vuelva
@@ -464,6 +606,8 @@ export {
   alGuardar, alReemplazar, reemplazarEstado, obtenerEstado,
   misionPorId, hechoHoy, horasDe, contarHechasHoy, progresoDelDia, completarMision,
   extrasDeHoy, cupoExtras, agregarExtra,
+  ratoPomodoro, pomodoroEnCurso, pomodorosDeHoy, cupoPomodoros,
+  arrancarPomodoro, cortarPomodoro, cerrarFasePomodoro, relojPomodoro,
   darXP,
   etapaBicho, puedeEclosionar, nombreBicho,
   canjear, confirmarCanje,

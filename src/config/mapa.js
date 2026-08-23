@@ -35,7 +35,13 @@ const SOLIDOS = new Set(['F', '#', '~']);
  *  OBJETOS DEL MUNDO
  *  x,y en tiles. art = clave en ART_OBJ. mision = id de MISIONES.
  *  accion = 'mision' | 'animo' | 'premios' | 'carta' | 'companero' | 'info'
- *           | 'mesa' | 'inodoro' | 'espejo'
+ *           | 'mesa' | 'inodoro' | 'espejo' | 'compu' | 'sillon'
+ *  mira   = sólo en los asientos ('compu', 'sillon'): para qué lado queda
+ *           mirando Kath una vez sentada, en el orden de motor.js#DIRS.
+ *  tapa   = sólo en los asientos: el mueble se dibuja ENCIMA de Kath sentada,
+ *           en vez de esconderse debajo de ella. Es lo que distingue al sillón
+ *           (el respaldo la cubre) de la silla del escritorio (que desaparece
+ *           porque ya viene dibujada adentro del sprite).
  * -------------------------------------------------------------------------*/
 const TODOS_LOS_OBJETOS = [
   // --- Dormitorio ---
@@ -45,6 +51,12 @@ const TODOS_LOS_OBJETOS = [
   { x:7,  y:3,  art:'biblioteca',solido:true },
   { x:8,  y:3,  art:'escritorio',accion:'animo' },
   { x:9,  y:3,  art:'notebook',  accion:'progreso' },
+  /* La silla, justo abajo de la notebook. Sentarse ACÁ es "ir a la compu":
+     mirando para arriba (`mira:3`) queda de espaldas y con la notebook
+     enfrente, así que estando sentada el botón A la sigue abriendo.
+     La notebook además se puede seguir tocando de parada desde (10,3), que es
+     por donde se llega si la silla está ocupada por el propio mueble. */
+  { x:9,  y:4,  art:'silla',     accion:'compu',  mira:3 },
   // El placard va contra la pared de la derecha y NO debajo del cuadro: el
   // cuadro está colgado en (10,2) y se lee parándose en (10,3), así que un
   // mueble ahí dejaba la carta inalcanzable.
@@ -102,9 +114,22 @@ const TODOS_LOS_OBJETOS = [
   { x:16, y:10, art:'tienda',    accion:'premios' },
   { x:17, y:10, art:'planta',    solido:true },
   { x:18, y:9,  art:'lampara',   solido:true },
-  { x:11, y:12, art:'sofa',      solido:true },
+  /* Los dos sillones se usan: Kath se sienta a ver la tele. `mira:3` la deja
+     mirando para arriba, o sea a la tele (15,10) y a la chimenea, que es para
+     donde miran los sillones desde siempre según este mismo archivo.
+
+     `tapa` es lo que hace que eso se pueda: el sillón se dibuja DESPUÉS de
+     ella y su respaldo la cubre de la nuca para abajo. No es un adorno — la
+     hoja de Kath sentada trae una silla de madera adentro del sprite, y sin
+     algo que la tape, sentarse de espaldas en el sillón se ve como que arrimó
+     una silla al living. Con el respaldo encima queda lo que se quiere: la
+     cabeza asomando por arriba del sillón, mirando la tele.
+
+     Se sienta en la mitad a la que se acercó: eso lo resuelve solo el motor,
+     que usa la casilla que ella tiene enfrente. */
+  { x:11, y:12, art:'sofa',      accion:'sillon', mira:3, tapa:true },
   { x:13, y:12, art:'mesaRatona',solido:true },
-  { x:15, y:12, art:'sofa',      solido:true },   // en 14 tapaba la puerta al jardin
+  { x:15, y:12, art:'sofa',      accion:'sillon', mira:3, tapa:true },   // en 14 tapaba la puerta al jardin
   { x:18, y:12, art:'planta',    solido:true },
 
   /* --- Jardín ---
