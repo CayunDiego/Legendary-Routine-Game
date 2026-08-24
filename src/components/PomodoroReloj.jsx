@@ -3,6 +3,7 @@ import { useLogica, useUI } from '../hooks/useStore.js';
 import { getModo } from '../state/ui.js';
 import { POMODORO } from '../config/pomodoro.js';
 import { pomodoroEnCurso, relojPomodoro } from '../state/gameLogic.js';
+import { sentadaEnCompu } from '../engine/motor.js';
 import { PixelTexto } from './Reloj.jsx';
 
 /* ---------------------------------------------------------------------------
@@ -15,6 +16,10 @@ import { PixelTexto } from './Reloj.jsx';
  *
  *  Usa los mismos dígitos pixelados que el reloj de pared (Reloj.jsx#PixelTexto)
  *  a propósito: son dos relojes, tienen que verse como dos relojes.
+ *
+ *  Sentada a la compu no sale: ahí el motor le dibuja el reloj GRANDE abajo de
+ *  ella (motor.js#dibujarPomodoroGrande) y este quedaría diciendo lo mismo en
+ *  chiquito en la otra punta de la pantalla.
  * -------------------------------------------------------------------------*/
 export default function PomodoroReloj() {
   useUI();
@@ -32,6 +37,10 @@ export default function PomodoroReloj() {
   const pomo = pomodoroEnCurso();
   // En la portada no va, igual que el reloj de pared: todavía no empezó nada.
   if (!pomo || getModo() === 'titulo') return null;
+  /* Le toca al reloj grande. Se entera en el próximo latido, dentro del
+     segundo: sentarse ya la deja mirando el grande, así que el chiquito
+     apagándose un instante después no lo ve nadie. */
+  if (sentadaEnCompu()) return null;
 
   const foco = pomo.fase === 'foco';
   const txt = relojPomodoro(pomo.restaMs);

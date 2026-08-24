@@ -42,7 +42,7 @@ npm run build     # dist/ (avisa si el deploy le prende el cartelito a Kath)
 npm run sprites   # rehace hojas desde arte-fuente/ (python + pillow numpy)
 ```
 
-`npm run smoke` levanta el juego con DOM simulado, corre ~129 pasos y dibuja
+`npm run smoke` levanta el juego con DOM simulado, corre ~132 pasos y dibuja
 todos los componentes. Es la única red de seguridad: **feature nueva → paso
 nuevo en `smoke.mjs`**.
 

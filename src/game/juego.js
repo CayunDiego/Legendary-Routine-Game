@@ -526,14 +526,14 @@ function revisarPomodoro() {
   if (ev.abandonado) return;
 
   if (ev.fase === 'pausa') {
-    sonar('menu');
+    sonar('finPausa');
     mostrarBanner(`${POMODORO.icono} ${FRASES_PAUSA[pomodorosDeHoy().length % FRASES_PAUSA.length]}`, 6000);
     return;
   }
 
   // Terminó un bloque de foco: se para de la silla sola. La pausa es pararse.
   levantarse();
-  sonar('ok');
+  sonar('finFoco');
   if (ev.pago) mostrarRecompensa(ev.reg.xp, ev.reg.oro);
 
   const remate = FRASES_FOCO[Math.min(ev.hoy, FRASES_FOCO.length) - 1];
@@ -738,6 +738,14 @@ function iniciar() {
   conectar({
     juegoActivo, misionPorId, hechoHoy, puedeEclosionar, etapaBicho, alPisarCesped,
     estado: () => EST,
+    /* Para el reloj grande que el motor le dibuja abajo mientras trabaja
+       (motor.js#dibujarPomodoroGrande). Se le pasa masticado —el mm:ss ya
+       escrito y la fracción que queda— porque el motor no puede importar
+       gameLogic. */
+    pomodoro: () => {
+      const p = pomodoroEnCurso();
+      return p && { fase: p.fase, txt: relojPomodoro(p.restaMs), parte: p.restaMs / p.largoMs };
+    },
   });
 
   construirTiles();

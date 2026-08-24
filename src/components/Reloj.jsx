@@ -1,64 +1,42 @@
 import { useEffect, useState } from 'react';
 import { useUI } from '../hooks/useStore.js';
 import { getModo } from '../state/ui.js';
+import { GLIFOS, ALTO_GLIFO, SEP_GLIFO, anchoGlifos } from '../engine/glifos.js';
 
 /* ---------------------------------------------------------------------------
  *  RELOJ DE PARED — la fecha y la hora, arriba a la izquierda de la escena.
  *
- *  Los números se dibujan pixel por pixel y no con una tipografía: el resto del
- *  juego es arte de 24x32 escalado x3, y cualquier fuente del sistema al lado
- *  se ve como una etiqueta pegada encima. Además una fuente pixelada de verdad
- *  serían ~30 KB de archivo y un parpadeo mientras carga, para nueve dígitos y
- *  dos signos.
- *
- *  Cada glifo es una grilla de 3 de ancho x 5 de alto (los dos puntos, 1 de
- *  ancho). Se dibujan como rectángulos de un SVG con shape-rendering
+ *  Los dígitos salen de engine/glifos.js: son una grilla de 3x5 dibujada pixel
+ *  por pixel, para que no desentonen con el arte del juego (el porqué largo está
+ *  allá). Acá se pintan como rectángulos de un SVG con shape-rendering
  *  crispEdges, así que escalan a cualquier tamaño sin desenfoque y sin pesar
  *  nada.
  * -------------------------------------------------------------------------*/
-const GLIFOS = {
-  0: ['111', '101', '101', '101', '111'],
-  1: ['010', '110', '010', '010', '111'],
-  2: ['111', '001', '111', '100', '111'],
-  3: ['111', '001', '111', '001', '111'],
-  4: ['101', '101', '111', '001', '001'],
-  5: ['111', '100', '111', '001', '111'],
-  6: ['111', '100', '111', '101', '111'],
-  7: ['111', '001', '010', '010', '010'],
-  8: ['111', '101', '111', '101', '111'],
-  9: ['111', '101', '111', '001', '111'],
-  ':': ['0', '1', '0', '1', '0'],
-  '/': ['001', '001', '010', '100', '100'],
-  ' ': ['0', '0', '0', '0', '0'],
-};
-
-const ALTO = 5;
-const SEPARACION = 1;   // columnas vacías entre glifo y glifo
 
 /* Un texto corto escrito con la grilla de arriba. `px` es cuántos píxeles de
    pantalla mide cada píxel del dibujo. El color sale de `currentColor`, así
    que se cambia desde el CSS como si fuera texto. */
 function PixelTexto({ txt, px = 3, titulo }) {
   const glifos = [...String(txt)].map((c) => GLIFOS[c] || GLIFOS[' ']);
-  const ancho = glifos.reduce((s, g) => s + g[0].length + SEPARACION, 0) - SEPARACION;
+  const ancho = anchoGlifos(txt);
 
   const puntos = [];
   let x = 0;
   for (const g of glifos) {
-    for (let fila = 0; fila < ALTO; fila++) {
+    for (let fila = 0; fila < ALTO_GLIFO; fila++) {
       for (let col = 0; col < g[fila].length; col++) {
         if (g[fila][col] === '1') puntos.push(<rect key={`${x}-${col}-${fila}`} x={x + col} y={fila} width="1" height="1" />);
       }
     }
-    x += g[0].length + SEPARACION;
+    x += g[0].length + SEP_GLIFO;
   }
 
   return (
     <svg
       className="pixTexto"
-      viewBox={`0 0 ${ancho} ${ALTO}`}
+      viewBox={`0 0 ${ancho} ${ALTO_GLIFO}`}
       width={ancho * px}
-      height={ALTO * px}
+      height={ALTO_GLIFO * px}
       shapeRendering="crispEdges"
       role="img"
       aria-label={titulo || String(txt)}

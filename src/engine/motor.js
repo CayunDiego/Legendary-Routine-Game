@@ -6,11 +6,12 @@ import { dentroDeZonaMerli, pesoTileMerli } from '../config/merli.js';
 /* niveles.js no importa nada, así que traerlo acá no arma el ciclo que sí
    armaría pedirle xpNecesaria() a gameLogic.js (ver el comentario de allá). */
 import { xpNecesaria } from '../state/niveles.js';
-import { TILE_SRC, S, TILE, lienzo } from './drawing.js';
+import { TILE_SRC, S, TILE, lienzo, circ } from './drawing.js';
 import { TILES } from './tiles.js';
 import { ART_OBJ, SPR } from './objetos.js';
 import { SPR_DISFRAZ, bamboleoDisfraz, destellosDisfraz, ALTO_EXTRA, ANCHO_EXTRA } from './disfraces.js';
 import { sonar } from './sonido.js';
+import { ALTO_GLIFO, anchoGlifos, dibujarGlifos } from './glifos.js';
 
 /* ---------------------------------------------------------------------------
  *  Puente hacia la lógica del juego.
@@ -28,6 +29,10 @@ let juego = {
   etapaBicho: () => 0,
   estado: () => ({}),
   alPisarCesped: () => {},
+  /* El pomodoro en curso, ya masticado: { fase, txt, parte } o null. Viene
+     armado de juego.js porque el mm:ss y las fases son de gameLogic, que el
+     motor no puede importar sin armar el ciclo. */
+  pomodoro: () => null,
 };
 
 function conectar(api) { juego = { ...juego, ...api }; }
@@ -478,6 +483,13 @@ const SENTADA_MS = 320;
 
 function estaSentada() { return !!jugadora.asiento; }
 
+/* Sentada en la silla del escritorio, o sea trabajando. Lo miran el reloj
+   grande del pomodoro (acá abajo) y el chiquito de la esquina, que se esconde
+   mientras el grande está puesto. */
+function sentadaEnCompu() {
+  return !!(jugadora.asiento && jugadora.asiento.mueble.accion === 'compu');
+}
+
 /* Devuelve si se pudo. Falla si ya está sentada o si no tiene el mueble
    enfrente, que es justo lo que pasa cuando el pomodoro arranca desde el menú
    y Kath se fue caminando a otro lado: ahí no se sienta y listo. */
@@ -740,6 +752,119 @@ function dibujar(dt) {
   }
 
   aplicarLuzAmbiente();
+
+  /* Va DESPUÉS de la luz ambiente a propósito: es un reloj, no algo de la casa.
+     Adentro del tinte de la noche los dígitos se apagan justo cuando más se los
+     mira. */
+  dibujarPomodoroGrande();
+}
+
+/* --- el reloj grande del pomodoro ------------------------------------------
+ *
+ *  Mientras Kath está sentada a la compu con un pomodoro andando, el reloj sale
+ *  GRANDE y pegado abajo de ella, en el canvas. El chiquito de la esquina
+ *  (components/PomodoroReloj.jsx) se esconde mientras tanto: son el mismo dato y
+ *  dos veces el mismo número es ruido.
+ *
+ *  Grande y sobre ella y no en una esquina porque el momento es ese: está
+ *  laburando de verdad, mirando otra pantalla, y levanta la vista al teléfono
+ *  apoyado al lado. Lo que tiene que poder hacer es leer cuánto falta de un
+ *  vistazo y de costado, sin acercarse ni buscar dónde estaba el número.
+ *
+ *  Va en el canvas y no en un div encima porque tiene que seguirla a ella: la
+ *  cámara se mueve sola, y en React eso sería redibujar el juego entero una vez
+ *  por cuadro para correr un cartelito dos píxeles.
+ * ------------------------------------------------------------------------- */
+const POMO_PX = 6;               // cuánto mide en pantalla cada píxel del dígito
+const POMO_PAD = 9;              // aire adentro de la caja
+const POMO_BARRA = 5;            // alto de la barra de lo que queda
+const POMO_HUECO = 8;            // entre el dibujito y los dígitos
+const POMO_COLOR = { foco: '#ff9d7a', pausa: '#8ee0c8' };
+
+/* El dibujito de la izquierda: un tomate mientras trabaja, una taza en la
+   pausa. Está para que el cartel no sea "un número cualquiera contando" — de
+   un vistazo tiene que decir QUÉ está contando, y de paso cuál de las dos
+   cosas está pasando sin depender sólo del color.
+
+   Van en píxeles como todo lo demás (grilla de 12x12, `drawing.js#circ`) y no
+   con los emojis 🍅 / ☕ del reloj chico: acá el dibujo mide 36 px al lado de
+   dígitos hechos a mano, y un emoji del sistema a ese tamaño se ve como una
+   calcomanía pegada sobre el juego. */
+const ICONO_LADO = 12;
+const ICONO_PX = 3;
+const ICONO_TOMATE = [
+  ...circ(6, 7, 4, '#d93b26'),
+  ...circ(5, 6, 2, '#ef5a3f'),                                  // la luz de arriba
+  [4, 4, 2, 1, '#ff9d7a'],                                      // el brillo
+  /* Las hojas: dos filas nada más, y la de abajo cortada en tres. Enteras y
+     más altas quedaban como un sombrero verde encima de una pelota roja. */
+  [4, 2, 4, 1, '#4bb85c'],
+  [2, 3, 2, 1, '#3f9e4d'], [5, 3, 2, 1, '#4bb85c'], [8, 3, 2, 1, '#3f9e4d'],
+  [5, 1, 2, 1, '#2f7a3b'],                                      // el cabito
+];
+const ICONO_TAZA = [
+  [4, 1, 1, 2, '#a9d8cb'], [5, 3, 1, 1, '#a9d8cb'],             // el vapor
+  [7, 0, 1, 2, '#a9d8cb'], [8, 2, 1, 1, '#a9d8cb'],
+  [2, 5, 7, 6, '#f2f6f8'], [2, 5, 7, 1, '#ffffff'],             // la taza
+  [3, 6, 5, 1, '#7a4a2b'],                                      // el café adentro
+  [2, 10, 7, 1, '#cfd8dd'],
+  [9, 6, 2, 1, '#e3eaed'], [10, 7, 1, 2, '#e3eaed'], [9, 9, 2, 1, '#e3eaed'], // la manija
+  [1, 11, 9, 1, '#b9c2c9'],                                     // el plato
+];
+
+/* Pinta una lista de rectángulos de la grilla fuente escalada. Es lo mismo que
+   hace `drawing.js#pintar`, pero directo sobre el canvas del juego: son veinte
+   rectángulos por cuadro y no vale la pena guardar un lienzo aparte. */
+function dibujarIcono(rects, x, y, px) {
+  for (const r of rects) {
+    ctx.fillStyle = r[4];
+    ctx.fillRect(x + r[0] * px, y + r[1] * px, r[2] * px, r[3] * px);
+  }
+}
+
+function dibujarPomodoroGrande() {
+  if (!sentadaEnCompu()) return;
+  const p = juego.pomodoro();
+  if (!p) return;
+
+  const color = POMO_COLOR[p.fase] || POMO_COLOR.foco;
+  const anchoTxt = anchoGlifos(p.txt) * POMO_PX;
+  const altoTxt = ALTO_GLIFO * POMO_PX;
+  const anchoIco = ICONO_LADO * ICONO_PX;
+  const dentro = anchoIco + POMO_HUECO + anchoTxt;
+  const w = dentro + POMO_PAD * 2;
+  const h = altoTxt + POMO_BARRA + POMO_PAD * 2 + 5;
+
+  /* Centrado en ella y apoyado abajo de los pies. El clamp es para el caso
+     borde de la cámara pegada a un borde del mapa: mejor corrido que cortado. */
+  let x = Math.round(jugadora.px - cam.x + TILE / 2 - w / 2);
+  let y = Math.round(jugadora.py - cam.y + TILE) + 6;
+  x = Math.max(4, Math.min(vpW - w - 4, x));
+  y = Math.max(4, Math.min(vpH - h - 4, y));
+
+  // la caja: la misma de los relojes de la esquina, para que sean la misma cosa
+  ctx.fillStyle = 'rgba(13,13,24,.78)';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(0,0,0,.55)';
+  ctx.fillRect(x, y, w, 2); ctx.fillRect(x, y + h - 2, w, 2);
+  ctx.fillRect(x, y, 2, h); ctx.fillRect(x + w - 2, y, 2, h);
+
+  /* El dibujito queda centrado contra la fila de dígitos: mide 36 y ellos 30,
+     así que asoma 3 px arriba y abajo, que es lo que se quiere —el ícono es lo
+     que se ve primero desde lejos. */
+  dibujarIcono(p.fase === 'pausa' ? ICONO_TAZA : ICONO_TOMATE,
+    x + POMO_PAD, y + POMO_PAD - (anchoIco - altoTxt) / 2, ICONO_PX);
+
+  ctx.fillStyle = color;
+  dibujarGlifos(ctx, p.txt, x + POMO_PAD + anchoIco + POMO_HUECO, y + POMO_PAD, POMO_PX);
+
+  /* La barra dice de un vistazo cuánto falta sin tener que leer los números: de
+     lejos y de reojo, "va por la mitad" se ve antes que "17:42". */
+  const by = y + POMO_PAD + altoTxt + 5;
+  ctx.fillStyle = 'rgba(255,255,255,.16)';
+  ctx.fillRect(x + POMO_PAD, by, dentro, POMO_BARRA);
+  ctx.fillStyle = color;
+  ctx.fillRect(x + POMO_PAD, by, Math.round(dentro * Math.max(0, Math.min(1, p.parte))), POMO_BARRA);
 }
 
 /* Hasta dónde un personaje sigue a Kath con la mirada: tres casillas, o sea
@@ -1279,6 +1404,6 @@ export {
   actualizarPersonajes,
   actualizarAura, auraActiva, actualizarHuevo,
   registrarCola, dibujar, bailar, BAILE, luzAmbiente,
-  sentarse, levantarse, estaSentada,
+  sentarse, levantarse, estaSentada, sentadaEnCompu,
   animarEclosionHuevo,
 };

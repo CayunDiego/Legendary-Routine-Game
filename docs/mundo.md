@@ -103,7 +103,22 @@ sirve. Al terminar el foco: paga 8 XP / 4 oro (tope 6/día), la para de la silla
 y abre la pausa sola. Al terminar la pausa **no** encadena otro foco.
 El aviso se posterga si el modo es `titulo`, `modal` o `dialogo` (un diálogo se
 llevaría puesto lo que hubiera abierto).
-Se ve sin abrir nada: reloj chico en la escena, abajo del reloj de pared.
+Se ve sin abrir nada, y de dos tamaños según dónde esté:
+- **Parada**: reloj chico en la esquina, abajo del reloj de pared
+  (`components/PomodoroReloj.jsx`).
+- **Sentada a la compu**: reloj GRANDE dibujado en el canvas justo abajo de
+  ella, con barra de lo que queda (`motor.js#dibujarPomodoroGrande`, dígitos de
+  `engine/glifos.js`). Ahí el chico se esconde: dos veces el mismo número es
+  ruido. Va en el canvas y no en un div porque tiene que seguirla mientras la
+  cámara se mueve. El dato le llega al motor por `conectar({ pomodoro })`, ya
+  masticado, porque el motor no puede importar `gameLogic`. Lleva a la
+  izquierda un **tomate** (foco) o una **taza** (pausa) dibujados en píxeles
+  —no los emojis del reloj chico: a 36 px al lado de dígitos hechos a mano, un
+  emoji del sistema se ve como una calcomanía.
+
+Cada fase termina con su propio sonido, y son distintos entre sí a propósito:
+`finFoco` sube y se repite (puede agarrarla de espaldas), `finPausa` baja y es
+suave. Los dos en `engine/sonido.js`.
 
 ### Día y noche
 `motor.js#luzAmbiente()`. Tabla de tintes por hora, interpolada, leyendo

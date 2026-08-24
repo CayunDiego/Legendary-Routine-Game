@@ -21,7 +21,7 @@ tarea los toca. Leer `docs/` entero por las dudas es gastar contexto al pedo.
 ## Estado del proyecto
 
 Publicado y en uso. `npm test` verde: lint 0 errores, 12 pasos worker,
-129 pasos smoke.
+132 pasos smoke.
 
 Lo que existe hoy, en una línea cada uno — el detalle está en `mundo.md`:
 

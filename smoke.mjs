@@ -1048,6 +1048,35 @@ paso('pomodoro: terminar el foco la para de la silla', () => {
   logica.cortarPomodoro();
 });
 
+paso('pomodoro: sentada a la compu el reloj le sale grande abajo de ella', () => {
+  // Sin reemplazarEstado(): la partida que viene de los pasos de arriba ya
+  // tiene un pomodoro cobrado, y dejarla virgen le apagaria la primera subida
+  // a los pasos de la nube (una partida sin empezar no se sube).
+  pararseFrenteA(silla, { x: silla.x, y: silla.y + 1 }, 3);
+  uiSt.setModo('menu');
+  mod.empezarPomodoro('clasico');
+  dlg.cerrarDialogo();
+  if (!motor.sentadaEnCompu()) throw new Error('no quedo sentada a la compu');
+
+  /* El reloj grande se dibuja adentro del cuadro, asi que esto es lo que lo
+     ejercita: si el puente con gameLogic o los glifos se rompen, revienta aca
+     y no en el telefono de Kath con el pomodoro andando. */
+  motor.dibujar(16);
+
+  motor.levantarse();
+  logica.cortarPomodoro();
+});
+
+paso('pomodoro: el reloj grande es de la compu, no de cualquier asiento', () => {
+  // En el sillon esta viendo la tele: el reloj de trabajo no tiene por que
+  // taparle media pantalla.
+  const desde = { x: sillon.x, y: sillon.y + 1 };
+  motor.sentarse(pararseFrenteA(sillon, desde, 3));
+  if (!motor.estaSentada()) throw new Error('no se sento en el sillon');
+  if (motor.sentadaEnCompu()) throw new Error('el sillon paso por silla de la compu');
+  motor.levantarse();
+});
+
 paso('fusion: el pomodoro que sigue andando no se apaga al sincronizar', () => {
   const enCurso = { fase: 'foco', rato: 'clasico', desde: Date.now(), hasta: Date.now() + 600000 };
   // El telefono lo arranco y se quedo callado; la tablet escribio despues.
@@ -1430,6 +1459,21 @@ uiSt.abrirModal('extra');
    arranca uno para que le toque el turno con el reloj puesto, que es el único
    estado en el que ese componente existe. */
 logica.arrancarPomodoro('clasico');
+
+/* Y tiene que estar PARADA: sentada a la compu el reloj chico se esconde a
+   proposito —manda el grande del canvas—, y eso, justo abajo, seria un
+   "dibujo vacio". */
+motor.levantarse();
+
+const PomoRelojMod = await vite.ssrLoadModule('/src/components/PomodoroReloj.jsx');
+paso('pomodoro: sentada a la compu no salen los dos relojes', () => {
+  const dibujo = () => renderToStaticMarkup(
+    React.createElement(Provider, null, React.createElement(PomoRelojMod.default, {})));
+  if (!dibujo()) throw new Error('parada tendria que dibujar el reloj chico');
+  motor.sentarse(pararseFrenteA(silla, { x: silla.x, y: silla.y + 1 }, 3));
+  if (dibujo()) throw new Error('sentada quedaron los dos relojes puestos');
+  motor.levantarse();
+});
 
 for (const [nombre, ruta] of [
   ['App', '/src/App.jsx'],

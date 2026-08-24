@@ -1,7 +1,7 @@
 # Deuda técnica
 
-Publicado y en uso. `npm test` verde (2026-08-23): lint 0 errores, 12 pasos
-worker, 129 pasos smoke.
+Publicado y en uso. `npm test` verde (2026-08-24): lint 0 errores, 12 pasos
+worker, 132 pasos smoke.
 
 **Leer esto antes de "arreglar" algo raro**: puede estar acá, decidido a
 propósito. Deuda nueva se anota acá, no se cuenta en el chat.
@@ -92,6 +92,18 @@ la pose de frente.
 respaldo puede ser más bajo (se le verían los hombros) y se podría sentar en
 cualquier mueble sin trucos de orden de dibujo. El código ya está preparado:
 sería sacar `tapa` de los sillones en `config/mapa.js`.
+
+### N. Los avisos del pomodoro no suenan con la pestaña escondida — media
+`finFoco` / `finPausa` los dispara `revisarPomodoro()`, que corre en un
+`setInterval` de la pestaña: con el teléfono bloqueado o el juego en segundo
+plano —o sea, haciendo bien el pomodoro— el navegador lo frena, y el sonido
+llega recién cuando Kath vuelve a mirar (el `visibilitychange` lo cierra ahí
+mismo). El reloj no se atrasa nunca, el aviso sí. Y aunque la pestaña esté
+visible, el `AudioContext` arranca suspendido hasta el primer toque: entrar al
+juego y no tocar nada deja el primer aviso mudo.
+**Arreglo:** notificaciones del sistema (`Notification` + service worker), que
+es lo único que suena con la pantalla apagada. Pide permiso, y con permiso
+negado no hay plan B.
 
 ## Resuelto
 
