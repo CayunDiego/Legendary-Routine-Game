@@ -67,10 +67,23 @@ casilla por peso. Hoja de 10 cuadros x 4 direcciones, celda 57x42, se dibuja 1:1
 (sin reescalar) para que quede nítida.
 
 ### Diego
-`config/flags.js#diego`. Parado en el jardín (6,14). Informa cómo viene el día,
+`config/flags.js#diego`. Su lugar es el jardín (6,14). Informa cómo viene el día,
 toma las secundarias, mira a Kath cuando se acerca (3 casillas), gira solo
 cuando está solo, y se prende a bailar si ella baila al lado (misma coreografía,
 un cuadro atrás).
+
+**El paseo** (`config/diego.js` + `motor.js#actualizarPaseo`): cada 12-30 s se
+manda 3-6 casillas por el jardín y **vuelve solo** a la suya, mirando la casa.
+Usa la hoja de caminar que ya tenía, con el mismo alternado de pie que Kath.
+Tres cosas que lo separan del paseo de Merlí:
+- **Con Kath cerca no arranca** ningún paso (termina el que estaba a medias):
+  es el que toma las secundarias, irse cuando ella se acerca sería pelearle.
+- **Es un objeto del mapa** —sólido y con `accion`—, así que cada paso mueve
+  también las tablas de sólidos e interacción (`motor.js#moverObjetoTile`). Si
+  no: pared invisible en el pasto, o el botón A hablándole al aire.
+- **No pisa el paso de una puerta** (parado ahí deja a Kath encerrada) ni sale
+  del pasto/sendero. La vuelta se busca con BFS y no encarando para el lado de
+  casa: la casilla vedada de la puerta deja rincones sin camino derecho.
 
 ### Baile
 Arranca solo a los 15 s quieta, o a pedido con doble toque de A sin nada

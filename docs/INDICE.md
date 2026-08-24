@@ -21,7 +21,7 @@ tarea los toca. Leer `docs/` entero por las dudas es gastar contexto al pedo.
 ## Estado del proyecto
 
 Publicado y en uso. `npm test` verde: lint 0 errores, 12 pasos worker,
-132 pasos smoke.
+137 pasos smoke.
 
 Lo que existe hoy, en una línea cada uno — el detalle está en `mundo.md`:
 
@@ -29,5 +29,5 @@ Lo que existe hoy, en una línea cada uno — el detalle está en `mundo.md`:
 monedas y 6 premios canjeables con doble check · misiones secundarias que Kath le
 cuenta a Diego · compañero que nace de un huevo y evoluciona en 3 etapas ·
 5 disfraces que aparecen caminando por el césped · Merlí paseando sola ·
-Diego en el jardín · pomodoro en la compu · sentarse (silla y sillones) ·
+Diego en el jardín (que cada tanto sale a caminar) · pomodoro en la compu · sentarse (silla y sillones) ·
 ciclo día/noche por hora real · baile · guardado local + nube + archivo.

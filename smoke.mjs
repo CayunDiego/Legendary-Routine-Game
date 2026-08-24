@@ -155,6 +155,7 @@ const dlg = await vite.ssrLoadModule('/src/state/dialogo.js');
 const uiSt = await vite.ssrLoadModule('/src/state/ui.js');
 const logica = await vite.ssrLoadModule('/src/state/gameLogic.js');
 const zonaMerli = await vite.ssrLoadModule('/src/config/merli.js');
+const paseoCfg = await vite.ssrLoadModule('/src/config/diego.js');
 console.log('modulo importado, exports:', Object.keys(mod), '\n');
 
 /* config.js trae la URL del Worker de verdad, que es lo que necesita el juego
@@ -841,6 +842,9 @@ paso('Diego: solo, mira para todos lados', () => {
   // Bien lejos: con Kath cerca el ocio no corre, mira a Kath y listo.
   motor.jugadora.px = (d.x + 12) * TILE; motor.jugadora.py = d.y * TILE;
   d.tOcio = undefined; d.dirOcio = undefined;
+  // Y con el paseo frenado: caminando la pose la manda el paso, no el ocio.
+  // Lo que se mide aca es el que espera quieto (el paseo tiene sus pasos).
+  d.paseo.espera = Infinity;
 
   const vistas = new Set();
   let previa = d.dir;
@@ -859,6 +863,138 @@ paso('Diego: solo, mira para todos lados', () => {
   igual(motor.dirHaciaJugadora(d), 0, 'con Kath enfrente la mira a ella');
 
   motor.jugadora.px = guardada.px; motor.jugadora.py = guardada.py;
+});
+
+/* ---------------------------------------------------------------------------
+ *  El paseo de Diego.
+ *
+ *  Es el unico objeto del mapa que se mueve, y por eso lo que hay que vigilar
+ *  no es que camine lindo: es que se lleve con el las dos tablas que dicen
+ *  donde esta (solido y objPorTile) y que no se pare en el paso de una puerta.
+ *  Las dos cosas se ven bien en pantalla y rompen el juego en silencio: una
+ *  pared invisible en el pasto, o Kath encerrada adentro de la casa.
+ * ------------------------------------------------------------------------- */
+const diego = mapaCfg.OBJETOS.find((o) => o.art === 'diego');
+
+/* Deja a Kath bien lejos (con ella cerca el paseo no arranca) y a Diego listo
+   para salir ya mismo, sin esperar el sorteo de 12 a 30 segundos. */
+function prepararPaseo() {
+  const { TILE } = dibujo;
+  uiSt.setModo('juego');
+  motor.jugadora.px = (diego.casa.x + 12) * TILE;
+  motor.jugadora.py = (diego.casa.y + 3) * TILE;
+  diego.paseo.espera = 0;
+}
+
+/* Corre el paseo `vueltas` cuadros de 50 ms, llamando a `mirar` en cada uno.
+   Corta antes si `mirar` devuelve true. Devuelve si corto antes. */
+function correrPaseo(vueltas, mirar) {
+  for (let i = 0; i < vueltas; i++) {
+    motor.actualizarPersonajes(50);
+    if (mirar && mirar()) return true;
+  }
+  return false;
+}
+
+/* Lo devuelve a su casilla, pase lo que pase: los pasos de abajo lo dejan
+   caminando por el jardin y el resto del smoke lo espera en su lugar. */
+function diegoACasa() {
+  diego.paseo.espera = 0;
+  diego.paseo.volviendo = true;
+  diego.paseo.pasos = 0;
+  correrPaseo(4000, () => !diego.paseo.moviendo && diego.x === diego.casa.x && diego.y === diego.casa.y);
+  // Cerrar el paseo a mano: si queda en "volviendo" estando en su casilla, el
+  // proximo prepararPaseo() no lo saca a caminar.
+  diego.paseo.volviendo = false;
+  diego.paseo.pasos = 0;
+  diego.paseo.espera = Infinity;
+}
+
+paso('Diego: cada tanto sale a caminar y vuelve solo a su lugar', () => {
+  prepararPaseo();
+  const casa = diego.casa;
+  igual(diego.x, casa.x, 'arranca en su casilla');
+
+  const salio = correrPaseo(2000, () => diego.x !== casa.x || diego.y !== casa.y);
+  if (!salio) throw new Error('nunca se movio de su casilla');
+
+  const volvio = correrPaseo(6000, () => !diego.paseo.moviendo
+    && diego.x === casa.x && diego.y === casa.y && !diego.paseo.volviendo);
+  if (!volvio) throw new Error('se fue caminando y no volvio');
+  igual(diego.dirOcio, casa.dir, 'y vuelve mirando la casa, como al principio');
+  diego.paseo.espera = Infinity;
+});
+
+paso('Diego: el paseo no lo saca del jardin ni le tapa el paso a una puerta', () => {
+  prepararPaseo();
+  const { MAPA } = mapaCfg;
+  const visitadas = new Set();
+  correrPaseo(8000, () => { visitadas.add(diego.x + ',' + diego.y); return false; });
+  if (visitadas.size < 3) throw new Error('casi no camino: la prueba no mira nada');
+
+  for (const k of visitadas) {
+    const [x, y] = k.split(',').map(Number);
+    const piso = MAPA[y][x];
+    if (piso !== 'G' && piso !== 'P') throw new Error(`piso ${piso} en ${k}: se metio adentro de la casa`);
+    for (const dy of [-1, 1]) {
+      if (MAPA[y + dy] && MAPA[y + dy][x] === 'D') throw new Error(`parado en el paso de la puerta ${x},${y + dy}`);
+    }
+    const lejos = Math.abs(x - diego.casa.x) + Math.abs(y - diego.casa.y);
+    if (lejos > paseoCfg.PASEO.radio) throw new Error(`se alejo ${lejos} casillas de su lugar`);
+  }
+  diegoACasa();
+});
+
+paso('Diego: caminando se lleva la solidez y el boton A con el', () => {
+  prepararPaseo();
+  const antes = { x: diego.x, y: diego.y };
+  const semovio = correrPaseo(2000, () => diego.x !== antes.x || diego.y !== antes.y);
+  if (!semovio) throw new Error('no se movio');
+
+  igual(motor.objetoEnTile(diego.x, diego.y), diego, 'el boton A lo encuentra donde esta');
+  if (motor.tilePasable(diego.x, diego.y)) throw new Error('dejo de ser solido al caminar');
+  if (motor.objetoEnTile(antes.x, antes.y)) throw new Error('quedo un Diego fantasma en la casilla vieja');
+  if (!motor.tilePasable(antes.x, antes.y)) throw new Error('dejo una pared invisible donde estaba');
+
+  diegoACasa();
+  igual(motor.objetoEnTile(diego.casa.x, diego.casa.y), diego, 'de vuelta en su casilla');
+});
+
+paso('Diego: vuelve a su lugar aunque el camino derecho este tapado', () => {
+  const { TILE } = dibujo;
+  prepararPaseo();
+  diegoACasa();
+
+  /* El rincon que rompia la version anterior de la vuelta: a la izquierda del
+     sendero, a la misma altura que su casilla. El paso obvio —de frente— es la
+     casilla de abajo de la puerta de la cocina, que tiene vedada porque es
+     solido y ahi dejaria a Kath encerrada; y el otro eje no lo acerca. La
+     vuelta existe, pero rodeando por abajo. */
+  const x = diego.casa.x - 2, y = diego.casa.y;
+  igual(mapaCfg.MAPA[y][diego.casa.x - 1], 'P', 'el sendero sigue en el medio');
+  igual(mapaCfg.MAPA[y - 1][diego.casa.x - 1], 'D', 'con la puerta justo arriba');
+  motor.moverObjetoTile(diego, x, y);
+  diego.px = x * TILE; diego.py = y * TILE;
+  diego.paseo.volviendo = true; diego.paseo.pasos = 0; diego.paseo.espera = 0;
+
+  const volvio = correrPaseo(4000, () => !diego.paseo.moviendo
+    && diego.x === diego.casa.x && diego.y === diego.casa.y);
+  if (!volvio) throw new Error(`se quedo trabado en ${diego.x},${diego.y}`);
+  diegoACasa();
+});
+
+paso('Diego: con Kath al lado no se va caminando', () => {
+  const { TILE } = dibujo;
+  uiSt.setModo('juego');
+  diegoACasa();
+  motor.jugadora.px = diego.casa.x * TILE;
+  motor.jugadora.py = (diego.casa.y + 1) * TILE;   // justo enfrente, hablandole
+  diego.paseo.espera = 0;
+  correrPaseo(2000);
+  igual(diego.x, diego.casa.x, 'no se movio en x');
+  igual(diego.y, diego.casa.y, 'no se movio en y');
+  igual(motor.dirHaciaJugadora(diego), 0, 'y la sigue mirando a ella');
+  diego.paseo.espera = Infinity;
 });
 
 paso('misiones: cada vez cumplida deja su hora', () => {

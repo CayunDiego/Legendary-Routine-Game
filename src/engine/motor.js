@@ -3,6 +3,7 @@ import { SPRITE_JUGADORA, SPRITE_BAILE, SPRITE_SENTADA, VIDEO_TELE, SPRITE_DIEGO
 import { FLAGS } from '../config/flags.js';
 import { KATH, SENTADA, MERLI, COMPANERO_ANIM, HUEVO_IDLE, HUEVO_HATCH } from '../config/recortes.js';
 import { dentroDeZonaMerli, pesoTileMerli } from '../config/merli.js';
+import { PASEO } from '../config/diego.js';
 /* niveles.js no importa nada, así que traerlo acá no arma el ciclo que sí
    armaría pedirle xpNecesaria() a gameLogic.js (ver el comentario de allá). */
 import { xpNecesaria } from '../state/niveles.js';
@@ -372,6 +373,30 @@ function construirMundo() {
       }
     }
   }
+  /* Los personajes caminan (ver el paseo, más abajo), así que además de la
+     casilla llevan posición en píxeles y se acuerdan de dónde tienen que
+     volver. `casa` se toma una sola vez: si esto se llamara de nuevo con Diego
+     a mitad de paseo, su lugar de siempre pasaría a ser donde quedó parado. */
+  for (const o of OBJETOS) {
+    if (!o.personaje || o.casa) continue;
+    o.px = o.x * TILE; o.py = o.y * TILE;
+    o.casa = { x: o.x, y: o.y, dir: o.dir || 0 };
+    o.paseo = { espera: sorteoEntre(PASEO.espera), pasos: 0, volviendo: false, moviendo: false, t: 0, paso: 0, desdeX: o.px, desdeY: o.py, ultima: null };
+  }
+}
+
+/* Mueve un objeto de casilla y lleva con él las dos tablas que dicen dónde
+   está: la de sólidos (si no, deja una pared invisible donde estaba) y la de
+   interacción (si no, el botón A le habla al lugar vacío). Sólo para objetos
+   de 1x1 —los únicos que se mueven— y sólo a una casilla que no tenga otro
+   objeto, que es lo que `puedePisarPaseo` ya garantiza. */
+function moverObjetoTile(o, nx, ny) {
+  const antes = o.x + ',' + o.y;
+  if (objPorTile.get(antes) === o) objPorTile.delete(antes);
+  if (!o.decor && !o.pared) solido[o.y][o.x] = SOLIDOS.has(MAPA[o.y][o.x]);
+  o.x = nx; o.y = ny;
+  objPorTile.set(nx + ',' + ny, o);
+  if (!o.decor && !o.pared) solido[ny][nx] = true;
 }
 
 function tilePasable(x, y) {
@@ -893,8 +918,8 @@ function dirHaciaJugadora(o) {
   // Sin Kath cerca manda el ocio (actualizarPersonajes). Si nadie lo movio
   // todavia, la pose que le puso el mapa.
   const puesta = o.dirOcio === undefined ? (o.dir || 0) : o.dirOcio;
-  const dx = jugadora.px - o.x * TILE;
-  const dy = jugadora.py - o.y * TILE;
+  const dx = jugadora.px - (o.px === undefined ? o.x * TILE : o.px);
+  const dy = jugadora.py - (o.py === undefined ? o.y * TILE : o.py);
   if (Math.hypot(dx, dy) > RADIO_MIRADA) return puesta;
   if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 2 : 1;
   if (dy !== 0) return dy > 0 ? 0 : 3;
@@ -922,7 +947,8 @@ function actualizarPersonajes(dt) {
   for (const o of OBJETOS) {
     if (!o.personaje || o.oculto) continue;
 
-    const cerca = Math.hypot(jugadora.px - o.x * TILE, jugadora.py - o.y * TILE) <= RADIO_MIRADA;
+    const cerca = Math.hypot(jugadora.px - (o.px === undefined ? o.x * TILE : o.px),
+      jugadora.py - (o.py === undefined ? o.y * TILE : o.py)) <= RADIO_MIRADA;
 
     /* Si Kath se pone a bailar al lado, se prende. Le copia la coreografía y el
        reloj, corridos un cuadro: bailan lo mismo pero él va atrás, como quien
@@ -934,7 +960,13 @@ function actualizarPersonajes(dt) {
       o.tBaile = Math.max(0, jugadora.tBaile - BAILE.cuadroMs);
     }
 
+    /* El paseo corre igual con Kath cerca, pero frenado: lo único que sigue
+       pasando es el paso que ya estaba a mitad de camino. */
+    if (o.paseo) actualizarPaseo(o, dt, cerca || o.bailando);
+
     if (cerca) { o.tOcio = OCIO_MIN_MS; continue; }
+    // Caminando no gira la cabeza sola: la pose la manda el paso.
+    if (o.paseo && (o.paseo.moviendo || o.paseo.volviendo || o.paseo.pasos > 0)) continue;
 
     o.tOcio = (o.tOcio === undefined ? sorteoOcio() : o.tOcio) - dt;
     if (o.tOcio > 0) continue;
@@ -948,6 +980,162 @@ function actualizarPersonajes(dt) {
   }
 }
 
+/* --- el paseo -------------------------------------------------------------
+ *
+ *  Cada tanto Diego se manda unos pasos por el jardín y vuelve solo a su
+ *  casilla. El porqué de cada regla está en config/diego.js; acá está el cómo.
+ *
+ *  Dos cosas lo separan del paseo de Merlí, que es el otro que camina solo:
+ *
+ *  - Merlí no es un objeto del mapa: no es sólida, no se le habla, y por eso
+ *    puede caminar por toda la casa sin avisarle a nadie. Diego SÍ es un
+ *    objeto —sólido y con `accion`—, así que cada paso tiene que mover también
+ *    las dos tablas que dicen dónde está (`moverObjetoTile`).
+ *
+ *  - Merlí se aleja y vuelve por peso: las casillas del dormitorio tiran más
+ *    en el sorteo, y el regreso pasa solo. Acá el regreso es explícito
+ *    (`volviendo`), porque Kath tiene que encontrarlo SIEMPRE en el mismo
+ *    lugar: es el que toma las misiones secundarias, no un gato.
+ * ------------------------------------------------------------------------ */
+function sorteoEntre([a, b]) { return a + Math.random() * (b - a); }
+
+/* El jardín, que es por donde pasea: pasto y sendero. Escrito como los pisos
+   que sí puede pisar y no como una lista de casillas prohibidas — así no puede
+   meterse adentro de la casa por una puerta ni terminar en el agua. */
+const PISOS_PASEO = new Set(['G', 'P']);
+
+/* Las tres razones por las que una casilla no sirve, en orden de gravedad:
+   es el paso de una puerta (Diego es sólido: parado ahí deja a Kath encerrada
+   adentro de la casa), ya tiene algo puesto, o queda más lejos de su lugar de
+   lo que se aleja. */
+function puedePisarPaseo(o, x, y) {
+  if (x < 0 || y < 0 || x >= ANCHO_MAPA || y >= ALTO_MAPA) return false;
+  if (!PISOS_PASEO.has(MAPA[y][x]) || !tilePasable(x, y)) return false;
+  for (const dy of [-1, 1]) {
+    const fy = y + dy;
+    if (fy >= 0 && fy < ALTO_MAPA && MAPA[fy][x] === 'D') return false;
+  }
+  const otro = objetoEnTile(x, y);
+  if (otro && otro !== o) return false;
+  return Math.abs(x - o.casa.x) + Math.abs(y - o.casa.y) <= PASEO.radio;
+}
+
+function vecinosDe(o, x, y) {
+  return DIRS
+    .map((d, i) => ({ dir: i, nx: x + d.dx, ny: y + d.dy }))
+    .filter((c) => puedePisarPaseo(o, c.nx, c.ny));
+}
+
+function vecinosPaseo(o) { return vecinosDe(o, o.x, o.y); }
+
+/* A dónde va el próximo paso de ida. Evita la casilla de la que viene: sin eso
+   el sorteo lo deja yendo y viniendo entre dos casillas, que no se lee como
+   pasear sino como dudar. Si no hay otra, vuelve por donde vino y listo. */
+function pasoAlAzar(o) {
+  const todos = vecinosPaseo(o);
+  const ult = o.paseo.ultima;
+  const nuevos = ult ? todos.filter((c) => c.nx !== ult.x || c.ny !== ult.y) : todos;
+  const lista = nuevos.length ? nuevos : todos;
+  return lista.length ? lista[Math.floor(Math.random() * lista.length)] : null;
+}
+
+/* El primer paso del camino de vuelta, buscado a lo ancho (BFS) por el pedazo
+   de jardín donde pasea.
+
+   Empezó siendo "encará para el lado de casa, y si está tapado probá el otro
+   eje", que es lo que alcanza en un jardín abierto. No alcanza: la casilla de
+   abajo de la puerta está vedada, y eso sola deja rincones desde los que el
+   camino derecho no existe. Parado a la izquierda del sendero, a la misma
+   altura que su casilla, el paso obvio es el prohibido y el otro eje no lo
+   acerca — se quedaba ahí para siempre, con Kath buscándolo en el lugar de
+   siempre. La zona es de unas cuarenta casillas: buscar el camino entero cada
+   vez que arranca un paso no cuesta nada. */
+function pasoACasa(o) {
+  const casa = o.casa;
+  if (o.x === casa.x && o.y === casa.y) return null;
+  const visto = new Set([o.x + ',' + o.y]);
+  const cola = [];
+  for (const c of vecinosPaseo(o)) {
+    visto.add(c.nx + ',' + c.ny);
+    cola.push({ x: c.nx, y: c.ny, primero: c });   // `primero` viaja con la rama
+  }
+  while (cola.length) {
+    const n = cola.shift();
+    if (n.x === casa.x && n.y === casa.y) return n.primero;
+    for (const c of vecinosDe(o, n.x, n.y)) {
+      const k = c.nx + ',' + c.ny;
+      if (visto.has(k)) continue;
+      visto.add(k);
+      cola.push({ x: c.nx, y: c.ny, primero: n.primero });
+    }
+  }
+  return null;
+}
+
+function arrancarPasoPaseo(o, c) {
+  const p = o.paseo;
+  o.dirOcio = c.dir;                  // camina mirando para donde va
+  p.ultima = { x: o.x, y: o.y };
+  p.desdeX = o.px; p.desdeY = o.py;
+  p.t = 0; p.moviendo = true;
+  moverObjetoTile(o, c.nx, c.ny);
+}
+
+/* Un cuadro del paseo. `frenado` es "Kath está cerca (o están bailando)": no
+   arranca ningún paso nuevo, pero el que está a mitad de camino se termina
+   igual — cortarlo lo dejaría parado entre dos casillas. */
+function actualizarPaseo(o, dt, frenado) {
+  const p = o.paseo;
+
+  if (p.moviendo) {
+    p.t += dt;
+    const f = Math.min(1, p.t / PASEO.pasoMs);
+    o.px = p.desdeX + (o.x * TILE - p.desdeX) * f;
+    o.py = p.desdeY + (o.y * TILE - p.desdeY) * f;
+    if (f < 1) return;
+    p.moviendo = false;
+    p.paso ^= 1;
+    p.espera = sorteoEntre(PASEO.respiro);
+    if (p.volviendo && o.x === o.casa.x && o.y === o.casa.y) {
+      p.volviendo = false;
+      p.ultima = null;
+      p.espera = sorteoEntre(PASEO.espera);
+      o.dirOcio = o.casa.dir;         // de vuelta en su lugar, mirando la casa
+    }
+    return;
+  }
+
+  if (frenado) return;
+  p.espera -= dt;
+  if (p.espera > 0) return;
+
+  /* Ya está de vuelta en su lugar: cierra el paseo. Normalmente esto lo
+     resuelve el final del paso (arriba), pero dejarlo también acá es lo que
+     hace que no pueda quedar trabado en "volviendo" estando en su casilla —
+     que es un Diego que no vuelve a salir nunca más, y desde afuera se ve
+     igual que si el paseo no existiera. */
+  if (p.volviendo && o.x === o.casa.x && o.y === o.casa.y) {
+    p.volviendo = false; p.pasos = 0; p.ultima = null;
+    p.espera = sorteoEntre(PASEO.espera);
+    o.dirOcio = o.casa.dir;
+    return;
+  }
+
+  // Parado en su casilla y sin paseo en curso: éste es el que arranca uno.
+  if (!p.volviendo && p.pasos <= 0) p.pasos = Math.round(sorteoEntre(PASEO.pasos));
+
+  const c = p.volviendo ? pasoACasa(o) : pasoAlAzar(o);
+  if (!c) {
+    // Sin salida (no pasa hoy: el jardín está abierto). Si estaba de paseo,
+    // encara la vuelta; si tampoco puede volver, espera y prueba de nuevo.
+    if (!p.volviendo) { p.volviendo = true; p.pasos = 0; }
+    p.espera = sorteoEntre(PASEO.respiro);
+    return;
+  }
+  if (!p.volviendo && --p.pasos <= 0) p.volviendo = true;
+  arrancarPasoPaseo(o, c);
+}
+
 function sorteoOcio() {
   return OCIO_MIN_MS + Math.random() * (OCIO_MAX_MS - OCIO_MIN_MS);
 }
@@ -957,13 +1145,18 @@ function sorteoOcio() {
    dibujara con la ruta normal quedaria mas bajo y mas flaco parado al lado. */
 function dibujarPersonaje(hoja, o) {
   const w = FRAME_W * ESC_JUG, h = FRAME_H * ESC_JUG;
-  const cx = o.x * TILE - cam.x + TILE / 2;
+  /* Por píxeles y no por casilla: mientras pasea está a mitad de camino entre
+     dos, igual que la jugadora. Un personaje que no camina no tiene `px`, y
+     ahí su casilla es su posición. */
+  const ox = o.px === undefined ? o.x * TILE : o.px;
+  const oy = o.py === undefined ? o.y * TILE : o.py;
+  const cx = ox - cam.x + TILE / 2;
   const dx = Math.round(cx - w / 2);
-  const dy = Math.round(o.y * TILE - cam.y + TILE - PIES * ESC_JUG - 3);
+  const dy = Math.round(oy - cam.y + TILE - PIES * ESC_JUG - 3);
 
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
   ctx.beginPath();
-  ctx.ellipse(Math.round(cx), Math.round(o.y * TILE - cam.y + TILE - 5), 15, 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(Math.round(cx), Math.round(oy - cam.y + TILE - 5), 15, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Bailando manda la coreografía: ella decide la fila y el cuadro, así que no
@@ -978,7 +1171,16 @@ function dibujarPersonaje(hoja, o) {
 
   const dir = dirHaciaJugadora(o);
 
-  if (hoja) ctx.drawImage(hoja, 0, dir * FRAME_H, FRAME_W, FRAME_H, dx, dy, w, h);
+  /* La caminata usa los mismos cuatro cuadros y el mismo alternado de pie que
+     la jugadora (dibujarJugadora): las dos hojas comparten grilla. */
+  let f = 0;
+  const p = o.paseo;
+  if (p && p.moviendo) {
+    const t = p.t / PASEO.pasoMs;
+    f = t < 0.5 ? (p.paso ? 3 : 1) : (p.paso ? 2 : 0);
+  }
+
+  if (hoja) ctx.drawImage(hoja, f * FRAME_W, dir * FRAME_H, FRAME_W, FRAME_H, dx, dy, w, h);
 }
 
 /* Huevo del jardín: bambolea quieto en el mapa, y cuando accionCompanero()
@@ -1405,5 +1607,6 @@ export {
   actualizarAura, auraActiva, actualizarHuevo,
   registrarCola, dibujar, bailar, BAILE, luzAmbiente,
   sentarse, levantarse, estaSentada, sentadaEnCompu,
+  moverObjetoTile,
   animarEclosionHuevo,
 };

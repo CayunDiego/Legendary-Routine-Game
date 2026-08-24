@@ -26,7 +26,7 @@ publicar. Por separado:
 | Comando | Qué hace |
 |---|---|
 | `npm run lint` | ESLint sobre `src/` y `worker/` |
-| `npm run smoke` | Levanta el juego con un DOM simulado y recorre 132 pasos |
+| `npm run smoke` | Levanta el juego con un DOM simulado y recorre 137 pasos |
 | `npm run smoke:worker` | Prueba el Worker contra un D1 falso, 12 pasos |
 | `npm run build` | Build de producción a `dist/` |
 | `npm run sprites` | Rehace las hojas de sprites desde `arte-fuente/` — ver [docs/sprites.md](docs/sprites.md) |

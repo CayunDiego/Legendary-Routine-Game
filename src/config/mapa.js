@@ -149,7 +149,9 @@ const TODOS_LOS_OBJETOS = [
      `dir:3` es con qué pose arranca: mirando para arriba, o sea a la casa,
      esperando que ella salga. De ahí en más no se queda quieto — solo, mira
      para todos lados (actualizarPersonajes en motor.js) y con Kath cerca la
-     mira a ella (dirHaciaJugadora).
+     mira a ella (dirHaciaJugadora). Y cada tanto se va a caminar unas casillas
+     por el jardín y vuelve acá: ver config/diego.js. Esta casilla es la que se
+     guarda como su lugar, así que moverla mueve el paseo entero con ella.
 
      Conviene que la pose inicial NO sea la misma que le toca cuando Kath le
      habla, que es `dir:0` (ella se le para enfrente, él mira para abajo). Con
