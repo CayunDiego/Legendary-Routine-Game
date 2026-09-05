@@ -50,7 +50,10 @@ function getFlashes() { return flashes; }
    1400 ms es lo que dura la animación .flotante en App.css. */
 function mostrarRecompensa(xp, oro) {
   const id = proximoId++;
-  flotantes = [...flotantes, { id, texto: `+${xp} XP  +${oro}💰` }];
+  // Sin monedas se muestra sólo el XP: las medicinas no pagan oro, y un
+  // "+0💰" flotando parece que algo salió mal.
+  const texto = oro ? `+${xp} XP  +${oro}💰` : `+${xp} XP`;
+  flotantes = [...flotantes, { id, texto }];
   store.avisar();
   setTimeout(() => {
     flotantes = flotantes.filter((f) => f.id !== id);

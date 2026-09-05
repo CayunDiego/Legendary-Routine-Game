@@ -89,6 +89,23 @@ const ART_OBJ = {
     [4, 10, 1, 1, '#8d7c63'], [11, 10, 1, 1, '#8d7c63']
   ]},
 
+  /* El pastillero, apoyado sobre la mesada: abajo es la misma mesada de al
+     lado (si no, el mueble se corta en el medio de la cocina) y arriba la caja
+     de tres compartimentos, uno por toma, con las tapitas del color de cada
+     franja — el mismo orden de config/medicinas.js: mañana, merienda, noche.
+     Al lado, el vaso de agua. */
+  pastillero: { tw: 1, th: 1, r: [
+    [0, 3, 16, 3, '#efe6d5'], [0, 3, 16, 1, '#fbf5ea'],
+    [0, 6, 16, 10, '#c9b79c'], [0, 6, 16, 1, '#b5a389'],
+    [2, 8, 5, 5, '#bda98c'], [9, 8, 5, 5, '#bda98c'],
+    [4, 10, 1, 1, '#8d7c63'], [11, 10, 1, 1, '#8d7c63'],
+    // el vaso
+    [12, 0, 3, 4, '#dff0f8'], [12, 0, 3, 1, '#f2fafd'], [12, 2, 3, 2, '#9fd0e0'],
+    // la caja y las tres tapitas
+    [1, 0, 10, 4, '#eef3f6'], [1, 0, 10, 1, '#ffffff'], [1, 3, 10, 1, '#c7d2d9'],
+    [2, 1, 2, 2, '#f7c948'], [5, 1, 2, 2, '#f4a3bf'], [8, 1, 2, 2, '#8fa2e0'],
+  ]},
+
   lavarropas: { tw: 1, th: 1, r: [
     [1, 1, 14, 15, '#eef1f3'], [1, 1, 14, 1, '#ffffff'], [12, 1, 3, 15, '#dde3e6'],
     [1, 2, 14, 3, '#d5dbdf'], [2, 3, 2, 1, '#8fbcd4'], [5, 3, 1, 1, '#e07b7b'],

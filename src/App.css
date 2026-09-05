@@ -269,7 +269,14 @@ body{
 .tab{
   flex:1;font:inherit;font-weight:800;font-size:11.5px;
   background:none;border:none;color:#9a8b7e;padding:10px 2px;border-radius:10px 10px 0 0;
-  white-space:nowrap;
+  white-space:nowrap;min-width:0;overflow:hidden;
+}
+/* Con la de medicinas ya son siete pestanas mas el boton de cerrar, y en un
+   telefono angosto la fila no entra. Se achica antes de romperse: la barra no
+   puede quedar con scroll horizontal porque el ✕ se iria con ella. */
+@media (max-width:400px){
+  #menuBarra{gap:3px;padding:10px 6px 0}
+  .tab{font-size:10.5px;padding:10px 1px}
 }
 .tab.activa{background:var(--crema2);color:var(--rosa-osc)}
 #btnCerrarMenu{
@@ -318,6 +325,31 @@ body{
   padding:7px 9px;background:var(--crema);border-radius:9px;font-weight:600;
 }
 .fila{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px;padding:6px 0}
+
+/* ---------- registro de medicinas ---------- */
+/* Un día por fila: la fecha arriba y las tres tomas abajo con su hora. Las
+   tomadas van en verde y las que faltan en gris, para que un día completo se
+   reconozca de un vistazo sin tener que leer las horas. */
+.medDia{
+  padding:8px 9px;background:var(--crema);border-radius:9px;
+  font-size:12.5px;font-weight:600;
+}
+.medDia.full{background:#f2fbf0}
+.medDia>b{display:block;font-weight:900;color:var(--rosa-osc);margin-bottom:4px}
+.medTomas{display:flex;gap:6px;flex-wrap:wrap}
+.medTomas span{
+  flex:1;min-width:70px;text-align:center;padding:4px 5px;border-radius:7px;
+  background:#fff;border:1.5px solid var(--crema2);
+}
+.medTomas .medOk{color:#3f8a33;border-color:#cfe9c6;background:#f6fdf4}
+.medTomas .medNo{color:#a99f93}
+/* Deshacer no puede parecerse a marcar: se toca una vez cada mil, y siempre
+   por error del botón de al lado. */
+.btnDeshacer{
+  font:inherit;font-weight:800;font-size:11.5px;flex:none;
+  background:#fff;color:#8a7d73;border:2px solid var(--crema2);
+  border-radius:10px;padding:8px 10px;
+}
 .inp{
   width:100%;font:inherit;font-size:14px;padding:10px 12px;margin-top:10px;
   border:2px solid var(--crema2);border-radius:10px;background:var(--crema);

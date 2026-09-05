@@ -1,7 +1,7 @@
 # Deuda técnica
 
 Publicado y en uso. `npm test` verde (2026-08-24): lint 0 errores, 12 pasos
-worker, 137 pasos smoke.
+worker, 148 pasos smoke.
 
 **Leer esto antes de "arreglar" algo raro**: puede estar acá, decidido a
 propósito. Deuda nueva se anota acá, no se cuenta en el chat.

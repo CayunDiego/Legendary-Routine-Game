@@ -3,9 +3,12 @@ import { MISIONES } from '../config/misiones.js';
 import { PREMIOS } from '../config/premios.js';
 import { CARTAS } from '../config/cartas.js';
 import { COMPANERO } from '../config/companero.js';
-import { DISFRACES, PASOS_POR_HALLAZGO } from '../config/disfraces.js';
+import {
+  DISFRACES_CESPED, DISFRACES_MEDICINAS, PASOS_POR_HALLAZGO,
+} from '../config/disfraces.js';
 import { EXTRA } from '../config/extras.js';
 import { POMODORO } from '../config/pomodoro.js';
+import { MEDICINAS, TOMAS } from '../config/medicinas.js';
 import { crearStore } from './store.js';
 import { xpNecesaria } from './niveles.js';
 import * as disco from './persistencia.js';
@@ -24,7 +27,7 @@ const CLAVE_GUARDADO = disco.CLAVE;
 
 /* Versión del formato de la partida. Si sube, hace falta una migración en
    MIGRACIONES que lleve de la anterior a esta. */
-const V_ACTUAL = 4;
+const V_ACTUAL = 5;
 
 const EST_INICIAL = () => ({
   v: V_ACTUAL,
@@ -71,6 +74,17 @@ const EST_INICIAL = () => ({
      [{ pid, dia, ts, minutos, rato, xp, oro }]. Como las secundarias, no se
      vacían al cambiar el día: son un registro. */
   pomodoros: [],
+  /* Las medicinas, día por día: { '2026-09-04': { desayuno: ts, cena: ts } }.
+     Es el registro más importante de la partida y el único que se guarda por
+     fecha en vez de vaciarse al cambiar el día.
+
+     Tres valores posibles por toma, y la diferencia importa:
+       - la clave no está  → nunca se marcó.
+       - 0                 → se marcó y Kath lo deshizo (se equivocó de botón).
+       - un Date.now()     → tomada, a esa hora exacta.
+     El 0 es lo que hace que deshacer y volver a marcar no pague de nuevo, y la
+     fusión lo respeta: tomada le gana a deshecha, y deshecha a nunca. */
+  meds: {},
   sonido: true,
   primeraVez: true,
   // Última versión del juego que Kath ya vio. Vacía en una partida que ya
@@ -121,6 +135,15 @@ const MIGRACIONES = {
     e.pomo = null;
     e.pomodoros = [];
     e.v = 4;
+    return e;
+  },
+  /* v4 -> v5: el registro de medicinas. Arranca vacío y no se puede
+     reconstruir de ningún lado: una partida vieja no tiene ni el dato ni la
+     hora, y un registro de medicación inventado es peor que uno que empieza
+     hoy. */
+  4: (e) => {
+    e.meds = {};
+    e.v = 5;
     return e;
   },
 };
@@ -553,13 +576,186 @@ function relojPomodoro(ms) {
   return String(Math.floor(seg / 60)).padStart(2, '0') + ':' + String(seg % 60).padStart(2, '0');
 }
 
+/* --- medicinas -------------------------------------------------------------
+   Las tres tomas del día. Se parecen a una misión de tres veces, pero no lo
+   son: cada toma tiene nombre y horario propios, el registro no se archiva al
+   cambiar el día y lo que hay que poder mirar es la hora exacta de cada una,
+   no un contador. Por eso viven en EST.meds y no en EST.hoy. */
+
+function tomaPorId(id) { return TOMAS.find((t) => t.id === id) || null; }
+
+/* La hora del reloj llevada a la escala del día del juego, que arranca a las 4
+   AM: la 1 de la mañana es "las 25 de ayer". Sin esto, la franja de la cena
+   (20 a 26) no existiría después de medianoche. */
+function horaDelDiaDeJuego(ts) {
+  const h = new Date(ts || Date.now()).getHours();
+  return h < CONFIG.horaReinicio ? h + 24 : h;
+}
+
+/* Qué toma corresponde a un instante, o null si no cae en ninguna franja. */
+function franjaDeHora(ts) {
+  const h = horaDelDiaDeJuego(ts);
+  return TOMAS.find((t) => h >= t.desde && h < t.hasta) || null;
+}
+
+/* El registro de un día, siempre un objeto (nunca undefined) para que quien lo
+   muestre no tenga que preguntar dos veces. */
+function medsDelDia(dia) {
+  return (EST.meds && EST.meds[dia || EST.dia]) || {};
+}
+
+/* El instante en que se tomó, o 0 si no está tomada (nunca marcada o deshecha).
+   Quien quiera distinguir "deshecha" de "nunca" mira medsDelDia() directo. */
+function horaDeToma(id, dia) {
+  const v = Number(medsDelDia(dia)[id]) || 0;
+  return v > 0 ? v : 0;
+}
+
+function tomasDelDia(dia) {
+  const reg = medsDelDia(dia);
+  return TOMAS.map((t) => ({ toma: t, ts: Number(reg[t.id]) > 0 ? Number(reg[t.id]) : 0 }));
+}
+
+/* Cuántas de las tres están tomadas ese día. */
+function tomadasDelDia(dia) {
+  return tomasDelDia(dia).filter((x) => x.ts > 0).length;
+}
+
+/* La toma que está pendiente AHORA: hay franja abierta y todavía no se marcó.
+   Es lo único que enciende la burbuja del pastillero y lo que Diego puede
+   llegar a mencionar. Fuera de franja devuelve null a propósito: el
+   recordatorio es de vez en cuando, no un cartel prendido todo el día. */
+function medicinaPendiente(ts) {
+  const f = franjaDeHora(ts);
+  if (!f) return null;
+  // La franja de la cena se estira pasada la medianoche, y ahí el día del juego
+  // sigue siendo el de ayer: por eso el día sale del mismo instante que la
+  // franja y no de EST.dia, que podría estar sin actualizar.
+  const dia = diaDeJuego(ts);
+  return horaDeToma(f.id, dia) > 0 ? null : f;
+}
+
+/* Marca una toma. Devuelve la recompensa, o null si ya estaba tomada.
+   Paga una sola vez por día y por toma: si la clave ya existe (aunque valga 0,
+   o sea que se marcó y se deshizo) se anota la hora pero no se cobra de nuevo.
+
+   La toma se anota en el día que le corresponde a la franja de ESE momento, no
+   siempre en EST.dia: marcar la cena a la 1 AM es la cena de anoche. Si la hora
+   no cae en ninguna franja manda el día de juego actual, que es lo mismo salvo
+   entre las 2 y las 4 de la mañana. */
+function marcarMedicina(id, ts) {
+  const t = tomaPorId(id);
+  if (!t) return null;
+  const ahora = Number(ts) || Date.now();
+  const dia = diaDeJuego(ahora);
+  if (!EST.meds) EST.meds = {};
+  const reg = EST.meds[dia] || (EST.meds[dia] = {});
+  if (Number(reg[id]) > 0) return null;
+
+  const yaCobrada = Object.prototype.hasOwnProperty.call(reg, id);
+  reg[id] = ahora;
+  podarMeds();
+
+  if (yaCobrada) {
+    guardar();
+    return { toma: t, ts: ahora, xp: 0, oro: 0, subio: 0, dia, repetida: true };
+  }
+  const subio = darXP(MEDICINAS.xp);
+  // Las medicinas NO pagan monedas (MEDICINAS.oro es 0). El `if` no es por las
+  // dudas: es lo que deja subirlo algún día sin que oroGanado se ensucie con
+  // sumas de cero mientras tanto. Ver el comentario de config/medicinas.js.
+  if (MEDICINAS.oro) {
+    EST.oro += MEDICINAS.oro;
+    EST.oroGanado = (Number(EST.oroGanado) || 0) + MEDICINAS.oro;
+  }
+  guardar();
+  return {
+    toma: t, ts: ahora, xp: MEDICINAS.xp, oro: MEDICINAS.oro, subio, dia,
+    repetida: false, disfraz: buscarDisfrazDeMedicinas(dia),
+  };
+}
+
+/* El premio de verdad de las medicinas: los accesorios que no se compran.
+   Se entrega al completar las tres tomas del día, y sólo si la racha ya llega
+   al `rachaMed` del que sigue. Devuelve el disfraz encontrado, o null.
+
+   Mira el día que se acaba de marcar y no EST.dia: la cena de anoche, marcada
+   a la 1 AM, completa el día de ayer y tiene que poder destrabar igual. Un día
+   viejo, en cambio, no destraba nada — la racha de hoy ya lo tuvo en cuenta o
+   ya se cortó. */
+function buscarDisfrazDeMedicinas(dia) {
+  const d = dia || EST.dia;
+  if (d !== EST.dia && d !== diaDeJuego()) return null;
+  if (tomadasDelDia(d) < TOMAS.length) return null;
+
+  const racha = rachaMedicinas();
+  const premio = DISFRACES_MEDICINAS.find(
+    (x) => racha >= x.rachaMed && !EST.disfraces.includes(x.id));
+  if (!premio) return null;
+  EST.disfraces.push(premio.id);
+  guardar();
+  return premio;
+}
+
+/* Deshacer: se marcó de más o se tocó el botón equivocado. No devuelve el XP ni
+   el oro —`oroGanado` nunca baja, es de lo que depende la fusión para no
+   inventar monedas— pero deja la clave en 0, así volver a marcarla tampoco
+   vuelve a pagar. Sólo se puede deshacer un día que existe en el registro. */
+function desmarcarMedicina(id, dia) {
+  const d = dia || EST.dia;
+  const reg = EST.meds && EST.meds[d];
+  if (!reg || !(Number(reg[id]) > 0)) return false;
+  reg[id] = 0;
+  guardar();
+  return true;
+}
+
+/* Los últimos días con algo anotado, del más nuevo al más viejo. El día de hoy
+   va siempre, aunque esté vacío: es el que Kath viene a mirar. */
+function diasDeMedicinas(cuantos) {
+  const dias = new Set(Object.keys(EST.meds || {}));
+  if (EST.dia) dias.add(EST.dia);
+  return [...dias].sort().reverse()
+    .slice(0, cuantos || MEDICINAS.diasVisibles)
+    .map((d) => ({ dia: d, tomas: tomasDelDia(d), tomadas: tomadasDelDia(d) }));
+}
+
+/* Racha de días con las tres tomas, contando para atrás desde ayer. Hoy entra
+   sólo si ya están las tres: si no, un día a medio hacer cortaría la racha a
+   las nueve de la mañana, que es exactamente cuando no hay nada que reprochar. */
+function rachaMedicinas() {
+  if (!EST.dia) return 0;
+  let n = 0;
+  const d = new Date(EST.dia + 'T12:00:00');
+  if (tomadasDelDia(EST.dia) < TOMAS.length) d.setDate(d.getDate() - 1);
+  for (let i = 0; i < MEDICINAS.historia; i++) {
+    const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+      + '-' + String(d.getDate()).padStart(2, '0');
+    if (tomadasDelDia(iso) < TOMAS.length) break;
+    n++;
+    d.setDate(d.getDate() - 1);
+  }
+  return n;
+}
+
+/* Tope de historia. Se poda por fecha y no por cantidad de escrituras: el
+   registro se ordena solo porque las claves son ISO. */
+function podarMeds() {
+  const dias = Object.keys(EST.meds || {});
+  if (dias.length <= MEDICINAS.historia) return;
+  for (const d of dias.sort().slice(0, dias.length - MEDICINAS.historia)) delete EST.meds[d];
+}
+
 /* --- disfraces ------------------------------------------------------------ */
 /* Sortea un hallazgo entre lo que TODAVÍA no encontró. Se sortea sobre los que
    faltan y no sobre la lista entera para que el último accesorio no se vuelva
    cada vez más improbable: encontrar el tercero cuesta lo mismo que el
    primero. Devuelve el disfraz encontrado, o null si esta vez no hubo nada. */
 function buscarDisfrazEnCesped() {
-  const faltan = DISFRACES.filter((d) => !EST.disfraces.includes(d.id));
+  // Sólo los del césped: los del pastillero se ganan completando el día, y si
+  // también aparecieran acá la recompensa de cuidarse se conseguiría caminando
+  // en círculos por el pasto.
+  const faltan = DISFRACES_CESPED.filter((d) => !EST.disfraces.includes(d.id));
   if (!faltan.length) return null;
   if (Math.random() >= 1 / PASOS_POR_HALLAZGO) return null;
   const d = faltan[Math.floor(Math.random() * faltan.length)];
@@ -609,6 +805,9 @@ export {
   ratoPomodoro, pomodoroEnCurso, pomodorosDeHoy, cupoPomodoros,
   arrancarPomodoro, cortarPomodoro, cerrarFasePomodoro, relojPomodoro,
   darXP,
+  tomaPorId, franjaDeHora, medsDelDia, horaDeToma, tomasDelDia, tomadasDelDia,
+  medicinaPendiente, marcarMedicina, desmarcarMedicina, diasDeMedicinas, rachaMedicinas,
+  buscarDisfrazDeMedicinas,
   etapaBicho, puedeEclosionar, nombreBicho,
   canjear, confirmarCanje,
   buscarDisfrazEnCesped, ponerDisfraz,

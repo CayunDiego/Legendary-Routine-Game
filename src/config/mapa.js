@@ -79,7 +79,10 @@ const TODOS_LOS_OBJETOS = [
   { x:3,  y:10, art:'heladera',  accion:'mision', mision:'agua' },
   { x:4,  y:10, art:'mesada',    solido:true },
   { x:5,  y:10, art:'cocina',    accion:'mision', mision:'comer' },
-  { x:6,  y:10, art:'mesada',    solido:true },
+  /* El pastillero de las medicinas. Va sobre la mesada y no en el piso: el
+     arte incluye la mesada abajo, así que la fila de muebles no se corta. Se
+     toca parándose en (6,11), que es pasillo libre de la cocina. */
+  { x:6,  y:10, art:'pastillero',accion:'medicinas' },
   { x:7,  y:10, art:'lavarropas',accion:'mision', mision:'ropa' },
   // La mesa no da misión: habla. Ver accionMesa() en game/juego.js.
   { x:7,  y:12, art:'mesa',      accion:'mesa' },

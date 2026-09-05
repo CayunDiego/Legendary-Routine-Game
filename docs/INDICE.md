@@ -7,7 +7,7 @@ tarea los toca. Leer `docs/` entero por las dudas es gastar contexto al pedo.
 |---|---|
 | Motor, render, cámara, colisión, orden de dibujo, bucle | `arquitectura.md` |
 | Agregar/mover un objeto del mapa, un cuarto, un personaje | `mundo.md` |
-| Una mecánica: misiones, premios, disfraces, compa, pomodoro, sentarse, luz | `mundo.md` |
+| Una mecánica: misiones, medicinas, premios, disfraces, compa, pomodoro, sentarse, luz | `mundo.md` |
 | `EST`, guardar, migrar el formato, nube, fusión de dos dispositivos | `estado.md` |
 | Hoja de sprites nueva o rota, `npm run sprites` | `sprites.md` |
 | Pedirle arte al generador de imágenes | `prompt-generador.md` |
@@ -21,13 +21,13 @@ tarea los toca. Leer `docs/` entero por las dudas es gastar contexto al pedo.
 ## Estado del proyecto
 
 Publicado y en uso. `npm test` verde: lint 0 errores, 12 pasos worker,
-137 pasos smoke.
+148 pasos smoke.
 
 Lo que existe hoy, en una línea cada uno — el detalle está en `mundo.md`:
 
-9 misiones diarias · racha (5 misiones/día, el día arranca 4 AM) · niveles y XP ·
+9 misiones diarias · 3 tomas de medicinas por día en el pastillero de la cocina, con registro por fecha y hora (dan XP y disfraces, no monedas) · racha (5 misiones/día, el día arranca 4 AM) · niveles y XP ·
 monedas y 6 premios canjeables con doble check · misiones secundarias que Kath le
 cuenta a Diego · compañero que nace de un huevo y evoluciona en 3 etapas ·
-5 disfraces que aparecen caminando por el césped · Merlí paseando sola ·
+9 disfraces: 5 que aparecen caminando por el césped y 4 que se destraban cuidando las medicinas · Merlí paseando sola ·
 Diego en el jardín (que cada tanto sale a caminar) · pomodoro en la compu · sentarse (silla y sillones) ·
 ciclo día/noche por hora real · baile · guardado local + nube + archivo.

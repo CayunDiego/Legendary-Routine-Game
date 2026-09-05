@@ -405,6 +405,126 @@ function capaAnimada(dibujo, lado, espejada) {
   });
 }
 
+/* ============================================================================
+ *  LOS DEL PASTILLERO
+ *
+ *  Los cuatro que se destraban cuidando las medicinas (`via: 'medicinas'` en
+ *  config/disfraces.js). Todos van en la cabeza y todos se apoyan SOBRE el
+ *  pelo, como el mono y la corona: se dibujan adelante del sprite.
+ *
+ *  Las anclas de la corona valen para los que miden 8 filas y apoyan en la
+ *  última: (6,-2) de frente, (6,-1) de perfil izquierdo, (7,0) de perfil
+ *  derecho y (6,0) de espaldas. El pelo no termina a la misma altura en las
+ *  cuatro filas de la hoja, y con una sola ancla el accesorio flota o se hunde
+ *  según para dónde mire. Los que miden menos filas se corren esa diferencia.
+ * ==========================================================================*/
+
+/* --- vincha de corazón ------------------------------------------------------
+   Una banda de 11 px con un corazón parado a un costado. La banda es lo que la
+   hace legible a este tamaño: un corazón suelto sobre el pelo se lee como una
+   mancha, apoyado sobre una cinta se lee como una vincha.
+
+   El corazón va apoyado SOBRE la banda y no flotando arriba de la cabeza: se
+   midió la hoja, y del lado izquierdo el pelo recién arranca en y=3, así que un
+   corazón centrado y dos píxeles más arriba queda colgando en el aire con un
+   hueco visible debajo. Va corrido a un costado, como se usa.
+
+        dx  0123456789A
+      y0      ##  ##         <- los dos lomos del corazón
+      y1      #####
+      y2       ###
+      y3        #
+      y4    ###########      <- la banda, que es la que apoya en el pelo
+      y5    ###########                                                      */
+const ROSA = '#f2769f', ROSA_LUZ = '#ffb7cf';
+
+const VINCHA_BANDA = [[4, 0, 11], [5, 0, 11]];
+const VINCHA_BANDA_LUZ = [[4, 0, 11]];
+const VINCHA_CORAZON = [[0, 2, 2], [0, 5, 2], [1, 2, 5], [2, 3, 3], [3, 4, 1]];
+const VINCHA_CORAZON_LUZ = [[0, 2, 2], [1, 2, 1]];
+
+function vincha(x, y) {
+  return [
+    ...filas(VINCHA_BANDA, x, ROSA, y),
+    ...filas(VINCHA_BANDA_LUZ, x, ROSA_LUZ, y),
+    ...filas(VINCHA_CORAZON, x, ROJO, y),
+    ...filas(VINCHA_CORAZON_LUZ, x, ROJO_LUZ, y),
+  ];
+}
+
+/* --- flor en el pelo --------------------------------------------------------
+   Una margarita de 5 x 4 prendida a un costado de la cabeza, en el mismo lugar
+   donde va el mono. Los dos pétalos de abajo van en un blanco más sucio: sin
+   esa sombra la flor es un óvalo blanco con un punto amarillo.
+
+        dx  01234
+      y0     ###
+      y1    #####
+      y2    #####
+      y3     ###                                                            */
+const PETALO = '#fdf6ec', PETALO_SOMBRA = '#d9cfc0', POLEN = '#f7c948';
+
+const FLOR_PETALOS = [[0, 1, 3], [1, 0, 5], [2, 0, 5], [3, 1, 3]];
+const FLOR_SOMBRA = [[2, 0, 1], [2, 4, 1], [3, 1, 1], [3, 3, 1]];
+const FLOR_CENTRO = [[1, 2, 1], [2, 2, 1]];
+
+function flor(x, y) {
+  return [
+    ...filas(FLOR_PETALOS, x, PETALO, y),
+    ...filas(FLOR_SOMBRA, x, PETALO_SOMBRA, y),
+    ...filas(FLOR_CENTRO, x, POLEN, y),
+  ];
+}
+
+/* --- gorro de dormir --------------------------------------------------------
+   El cucurucho clásico, cayendo hacia un costado y con el pompón en la punta.
+   Cae en diagonal y no derecho a propósito: parado se confunde con un sombrero
+   de fiesta, y la vuelta blanca del pie es lo que termina de decir "gorro".
+
+        dx  012345678
+      y0        ###        <- pompón
+      y1        ###
+      y2       ###
+      y3      ####
+      y4     #####
+      y5    ######
+      y6   ########
+      y7  #########        <- la vuelta, que es la que apoya                 */
+const GORRO = '#7f93e2', GORRO_LUZ = '#b9c4f2', GORRO_TELA = '#fdf6ec';
+
+const GORRO_CUERPO = [[2, 5, 2], [3, 4, 4], [4, 3, 5], [5, 2, 6], [6, 1, 8]];
+const GORRO_CANTO = [[2, 5, 1], [3, 4, 1], [4, 3, 1], [5, 2, 1], [6, 1, 1]];
+const GORRO_POMPON = [[0, 5, 2], [1, 4, 3]];
+const GORRO_VUELTA = [[7, 0, 9]];
+
+function gorro(x, y) {
+  return [
+    ...filas(GORRO_CUERPO, x, GORRO, y),
+    ...filas(GORRO_CANTO, x, GORRO_LUZ, y),
+    ...filas(GORRO_POMPON, x, GORRO_TELA, y),
+    ...filas(GORRO_VUELTA, x, GORRO_TELA, y),
+  ];
+}
+
+/* --- aureola ----------------------------------------------------------------
+   El único que no toca la cabeza: flota unos píxeles por encima. Es un anillo
+   y no un disco —el hueco del medio es lo que la separa de "un sombrero
+   amarillo chato"— y como la corona, tira brillitos (ver DESTELLOS).
+
+        dx  012345678
+      y0    #######
+      y1   #       #
+      y2    #######                                                          */
+const AUREOLA_ARO = [[0, 1, 7], [1, 0, 1], [1, 8, 1], [2, 1, 7]];
+const AUREOLA_LUZ = [[0, 1, 7]];
+
+function aureola(x, y) {
+  return [
+    ...filas(AUREOLA_ARO, x, ORO, y),
+    ...filas(AUREOLA_LUZ, x, ORO_LUZ, y),
+  ];
+}
+
 const DISFRAZ_ART = {
   /* De frente y de espaldas salen las dos orejas. De perfil sólo se dibuja
      una, la de atrás de la cabeza: la otra quedaría apuntando a la cámara y
@@ -443,6 +563,43 @@ const DISFRAZ_ART = {
     { adelante: conBorde(corona(6, -1)) },   // izquierda
     { adelante: conBorde(corona(7, 0)) },    // derecha
     { adelante: conBorde(corona(6, 0)) },    // arriba
+  ],
+
+  /* La vincha apoya en su ultima fila, dos mas arriba que la corona (mide 6
+     filas y no 8), asi que cada ancla es la de la corona corrida dos. El
+     corazon queda siempre del mismo lado de la cabeza: de espaldas y de perfil
+     derecho el dibujo va espejado, como el mono. */
+  vincha: [
+    { adelante: conBorde(vincha(6, 3)) },            // abajo
+    { adelante: conBorde(vincha(6, 4)) },            // izquierda
+    { adelante: conBorde(espejar(vincha(7, 5))) },   // derecha
+    { adelante: conBorde(espejar(vincha(6, 5))) },   // arriba
+  ],
+
+  /* La flor va prendida al costado, en el mismo lugar que el mono. */
+  flor: [
+    { adelante: conBorde(flor(13, 4)) },             // abajo
+    { adelante: conBorde(flor(12, 5)) },             // izquierda
+    { adelante: conBorde(espejar(flor(12, 6))) },    // derecha
+    { adelante: conBorde(espejar(flor(13, 6))) },    // arriba
+  ],
+
+  /* Ocho filas y apoya en la ultima: las anclas son las mismas de la corona. */
+  gorro: [
+    { adelante: conBorde(gorro(6, -2)) },            // abajo
+    { adelante: conBorde(gorro(6, -1)) },            // izquierda
+    { adelante: conBorde(espejar(gorro(7, 0))) },    // derecha
+    { adelante: conBorde(espejar(gorro(6, 0))) },    // arriba
+  ],
+
+  /* La aureola no apoya en nada: flota. Las anclas siguen la altura del pelo
+     igual que las demas —si no, de perfil queda mas lejos de la cabeza que de
+     frente y se lee como un aro perdido en el aire. */
+  aureola: [
+    { adelante: conBorde(aureola(7, -5)) },          // abajo
+    { adelante: conBorde(aureola(7, -4)) },          // izquierda
+    { adelante: conBorde(aureola(8, -3)) },          // derecha
+    { adelante: conBorde(aureola(7, -3)) },          // arriba
   ],
 
   /* Cuatro cuadros por direccion, no uno: ver la nota de la capa mas arriba. */
@@ -484,6 +641,17 @@ const BAMBOLEO = {
   mono:      [[0, 0], [0, -1], [0, 0], [0, 0]],
   /* La corona esta apoyada, no atada: se tambalea de lado al caminar. */
   corona:    [[0, 0], [-1, 0], [0, 0], [1, 0]],
+  /* La vincha esta ajustada a la cabeza: se mueve poco y en vertical, con el
+     corazon acompanando el paso. */
+  vincha:    [[0, 0], [0, -1], [0, 0], [0, 0]],
+  /* La flor esta prendida con una horquilla: tiembla de lado. */
+  flor:      [[0, 0], [1, 0], [0, 0], [-1, 0]],
+  /* El pompon del gorro pesa y va colgando: se hamaca de lado, en fase
+     contraria a la flor, que es lo que evita que caminen "juntos" si algun dia
+     se pueden usar los dos. */
+  gorro:     [[0, 0], [-1, 0], [0, 0], [1, 0]],
+  /* La aureola flota: sube y baja sola, no la arrastra el paso. */
+  aureola:   [[0, 0], [0, -1], [0, 0], [0, 1]],
   /* La capa NO esta aca a proposito: es el unico accesorio con dibujo propio
      por cuadro (ver CAPA_FRENTE y companeras), asi que ya ondea de verdad.
      Sumarle el bamboleo encima le correria el lienzo entero ademas de la
@@ -509,6 +677,14 @@ function bamboleoDisfraz(id, cuadro) {
  *  tres titilando juntas se leen como un parpadeo de pantalla, no como brillo.
  * ------------------------------------------------------------------------- */
 const DESTELLOS = {
+  /* La aureola brilla mas arriba que la corona porque flota por encima de la
+     cabeza; las tres estrellitas la rodean en vez de apoyarse en ella. */
+  aureola: [
+    [[5, -5, 0], [17, -4, 0.42], [11, -8, 0.75]],   // abajo
+    [[5, -4, 0], [17, -3, 0.42], [11, -7, 0.75]],   // izquierda
+    [[6, -3, 0], [18, -2, 0.42], [12, -6, 0.75]],   // derecha
+    [[5, -3, 0], [17, -2, 0.42], [11, -6, 0.75]],   // arriba
+  ],
   corona: [
     [[4, 2, 0], [17, 3, 0.38], [11, -4, 0.7]],    // abajo
     [[4, 3, 0], [17, 4, 0.38], [11, -3, 0.7]],    // izquierda

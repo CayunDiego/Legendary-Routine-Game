@@ -29,7 +29,8 @@ Puertas en las filas 7, 9 y 13.
 `mira` y `tapa` (sólo asientos, abajo).
 
 `accion`: `mision · animo · premios · carta · companero · info · mesa ·
-inodoro · espejo · tele · progreso · placard · diego · compu · sillon`.
+inodoro · espejo · tele · progreso · placard · diego · compu · sillon ·
+medicinas`.
 Se despachan en `game/juego.js#interactuar()`.
 
 ## Mecánicas
@@ -43,6 +44,30 @@ agua 6 · comer 3 · ropa 1 · sol 1 · ejercicio 1 · ánimo 1.
 Las que no están en la casa. Kath se las cuenta a Diego (jardín), las escribe en
 un modal. Tope 3/día, pagan como una misión pesada (15 XP / 8 oro).
 
+### Medicinas
+`config/medicinas.js`. Tres tomas por día (desayuno 6–12, merienda 15–19, cena
+20–2) que se marcan en el **pastillero de la cocina** (`(6,10)`, sobre la
+mesada) o desde la pestaña 💊. Cada toma paga 12 XP una sola vez por día, y
+**no da monedas**: las medicinas no son algo que Kath elige hacer para juntar
+plata, son algo que tiene que pasar igual. Lo que pagan son los cuatro
+accesorios del placard que no se consiguen de ninguna otra forma (ver
+Disfraces), y se destraban al completar las tres tomas del día.
+
+Es el registro más importante del juego, así que lo que se guarda es la **hora
+exacta** de cada toma y no un contador (`EST.meds`, ver `estado.md`). El día que
+le toca sale de la franja y no de `EST.dia`: la cena marcada a la 1 AM es la de
+anoche. Deshacer vive sólo en la pestaña —no en el diálogo del pastillero— para
+que marcar sea de un toque y no haya un botón de "me equivoqué" al lado.
+
+Los dos recordatorios son a propósito de bajo perfil, y los dos se apagan solos
+cuando la toma está marcada:
+- **La burbuja `!` sobre el pastillero**, únicamente mientras la franja está
+  abierta. Fuera de eso el mueble se ve como cualquier otro. El motor lo sabe
+  por `conectar({ medicinaPendiente })`.
+- **Diego**, y ni siquiera siempre: `MEDICINAS.chanceDiego` (1 de cada 3
+  charlas, y sólo si hay algo pendiente ahora). Diego informa cómo viene el día,
+  no controla la medicación.
+
 ### Premios
 6 en `config/premios.js`. Canjear descuenta monedas → el cupón queda
 **esperando**; cuando Diego lo cumple de verdad, Kath marca el segundo tilde
@@ -55,11 +80,23 @@ casillas. La cáscara rota queda **2 h reales** y después se va del mundo enter
 (no sólo del dibujo: si no, quedaría una casilla invisible que tapa el paso).
 
 ### Disfraces
-5 (`orejas, antenitas, mono, corona, capa`). Aparecen caminando por el césped:
-1 en 45 pasos, sorteando **sólo entre los que faltan**. Se dibujan encima de
+9, y salen de dos lados que no se cruzan (`via` en `config/disfraces.js`):
+
+- **Césped** (`orejas, antenitas, mono, corona, capa`): aparecen caminando por
+  el pasto, 1 en 45 pasos, sorteando **sólo entre los que faltan**.
+- **Medicinas** (`vincha, flor, gorro, aureola`): se destraban al completar las
+  tres tomas del día, cuando la racha llega a `rachaMed` días seguidos (1, 3, 7
+  y 21). **No salen nunca en el césped** — si salieran, la recompensa de
+  cuidarse se conseguiría caminando en círculos.
+
+Se dibujan encima de
 Kath en dos capas (atrás: orejas/antenas/capa de costado; adelante: moño/capa de
 espaldas) más bamboleo y destellos. Anclados a la celda de 24x32 — una hoja
 nueva de Kath tiene que respetar la posición de la cabeza.
+
+Cada ancla es por dirección y no una sola para las cuatro: el pelo no termina a
+la misma altura en las cuatro filas de la hoja, así que un accesorio con un
+único ancla flota en unas y se hunde en otras. Se mide antes de elegirla.
 
 ### Merlí
 La gata. Deambula sola por `config/merli.js#ZONA_MERLI`, sin pathfinding: elige

@@ -2,11 +2,11 @@
 
 Todo en `src/state/`. `EST` es la partida entera, un objeto plano serializable.
 
-## Forma de `EST` (v4)
+## Forma de `EST` (v5)
 
 | Campo | Qué |
 |---|---|
-| `v` | versión del formato. Hoy 4 |
+| `v` | versión del formato. Hoy 5 |
 | `dia` | día lógico `YYYY-MM-DD`. **Arranca a las 4 AM** (trasnochar no rompe la racha) |
 | `nivel` `xp` | curva: `xpNecesaria(n) = 80 + (n-1)*55` |
 | `oro` | monedas disponibles (baja al canjear) |
@@ -24,11 +24,18 @@ Todo en `src/state/`. `EST` es la partida entera, un objeto plano serializable.
 | `extras` | misiones secundarias `[{eid, dia, texto, ts, xp, oro}]`, tope 200 |
 | `pomo` | pomodoro corriendo o null: `{fase:'foco'\|'pausa', rato, desde, hasta}` |
 | `pomodoros` | bloques de foco terminados `[{pid, dia, ts, minutos, rato, xp, oro}]`, tope 300 |
+| `meds` | medicinas por día: `{'2026-09-04': {desayuno: ts, merienda: 0, cena: ts}}`, tope 120 días |
 | `sonido` `primeraVez` `versionVista` | preferencias / primera vez / última novedad vista |
 | `seq` `guardadoEn` `escritoPor` | metadatos de sincronización |
 
 Nota: `pomo.hasta` es un instante FUTURO, no un contador. Por eso el pomodoro
 corre con el juego cerrado.
+
+Nota 2: en `meds`, cada toma tiene **tres** estados y la diferencia importa:
+la clave no está (nunca se marcó) · `0` (se marcó y se deshizo) · un `Date.now()`
+(tomada, a esa hora). El `0` es lo que hace que deshacer y volver a marcar no
+vuelva a pagar, y le da orden al empate en la fusión.
+`meds` no se vacía al cambiar el día: es el registro, no el contador del día.
 
 ## Cambiar el formato: las tres cosas
 
@@ -36,7 +43,7 @@ Nunca una sola. Si falta alguna, la nube come progreso en silencio.
 
 1. Campo nuevo en `EST_INICIAL()`.
 2. Paso en `MIGRACIONES` (`{versionVieja: fn}`) **y** subir `V_ACTUAL`. Los
-   pasos se aplican en cadena: una partida v1 llega sola a v4.
+   pasos se aplican en cadena: una partida v1 llega sola a v5.
 3. Regla en `fusion.js` si el campo puede diferir entre dispositivos.
 
 `cargar()` hace `Object.assign(EST_INICIAL(), migrar(partida))`, así que un
@@ -79,6 +86,7 @@ código todavía no conoce sobreviven), y encima reglas por campo:
 | mismo `dia` | `hoy` suma por misión; `hoyEn` elige entera la lista del que hizo más veces (mezclarlas armaría una mañana que no pasó) |
 | distinto `dia` | manda el más nuevo; el día del otro se cierra y va al historial |
 | `extras`, `pomodoros` | unión por `eid`/`pid` |
+| `meds` | unión por día y por toma, y gana el valor más alto. Alcanza porque los tres estados ya están ordenados: tomada > deshecha (`0`) > nunca. O sea, **tomada le gana a deshecha**. Entre dos horas del mismo día gana la más temprana |
 | `pomo` | gana el que **no venció**; entre dos vivos, el que termina más tarde. El último en escribir no sirve: el dispositivo donde Kath trabaja es justo el que se queda callado |
 | `oro` | **no se puede tomar el máximo** (baja al canjear). Se reconstruye: `max(oroGanado) - suma(costo de canjeados fusionados)` |
 | `canjeados` | por `cid`. Los viejos sin `cid` se agrupan por `id+fecha` y gana la lista más larga |
@@ -91,6 +99,16 @@ código todavía no conoce sobreviven), y encima reglas por campo:
   tilde**: Kath marca que Diego se lo cumplió de verdad. Recibe el canje, no su
   `cid`, porque los viejos pueden no tener.
 - `agregarExtra(texto)` — tope diario `EXTRA.porDia`, recorta a `largoMax`.
+- Medicinas: `marcarMedicina(id, ts)` anota la hora y paga **una sola vez por
+  día y por toma**, aunque se deshaga y se vuelva a marcar.
+  `desmarcarMedicina(id, dia)` no devuelve XP ni oro (`oroGanado` nunca baja).
+  La toma se guarda en el día que le corresponde a su franja, no siempre en
+  `EST.dia`: marcar la cena a la 1 AM es la cena de anoche.
+  `medicinaPendiente(ts)` devuelve la toma sin marcar de la franja abierta ahora,
+  o `null` — es lo único que enciende la burbuja y lo que mira Diego.
+  Las tomas pagan XP pero **no oro** (`MEDICINAS.oro` es 0): su premio son los
+  accesorios de `via: 'medicinas'`, que entrega `buscarDisfrazDeMedicinas(dia)`
+  al completar las tres del día. Un día viejo no destraba nada.
 - Pomodoro: `arrancarPomodoro` / `cortarPomodoro` / `cerrarFasePomodoro`. Este
   último lo llama el latido de `juego.js`; devuelve qué pasó o `null`. Una fase
   vencida hace más de 4 h se descarta sin pagar ni festejar (pomodoro olvidado).

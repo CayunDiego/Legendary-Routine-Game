@@ -34,6 +34,9 @@ let juego = {
      armado de juego.js porque el mm:ss y las fases son de gameLogic, que el
      motor no puede importar sin armar el ciclo. */
   pomodoro: () => null,
+  /* Si hay una toma de medicina pendiente en su franja horaria. Es lo único
+     que enciende la burbuja del pastillero: ver config/medicinas.js. */
+  medicinaPendiente: () => false,
 };
 
 function conectar(api) { juego = { ...juego, ...api }; }
@@ -1248,7 +1251,8 @@ function dibujarObjeto(o) {
   } else if (o.accion && o.accion !== 'info') {
     const pend = (o.accion === 'animo' && juego.hechoHoy('animo') === 0) ||
       (o.accion === 'carta' && !juego.estado().cartaVista) ||
-      (o.accion === 'companero' && juego.puedeEclosionar());
+      (o.accion === 'companero' && juego.puedeEclosionar()) ||
+      (o.accion === 'medicinas' && juego.medicinaPendiente());
     if (pend) {
       const flot = Math.sin(tiempoAnim / 320) * 3;
       ctx.drawImage(SPR.__alerta, Math.round(dx + w / 2 - 12), Math.round(dy - 26 + flot), 24, 24);

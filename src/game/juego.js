@@ -5,6 +5,7 @@ import { CARTAS } from '../config/cartas.js';
 import { COMPANERO } from '../config/companero.js';
 import { EXTRA, FRASES_SIN_EXTRA, FRASES_CON_EXTRA } from '../config/extras.js';
 import { POMODORO, FRASES_FOCO, FRASES_PAUSA } from '../config/pomodoro.js';
+import { MEDICINAS, TOMAS } from '../config/medicinas.js';
 
 import { TILE } from '../engine/drawing.js';
 import { construirTiles } from '../engine/tiles.js';
@@ -26,6 +27,7 @@ import {
   horaBonita, fechaHoraBonita,
   extrasDeHoy, cupoExtras, agregarExtra,
   pomodoroEnCurso, pomodorosDeHoy,
+  tomasDelDia, tomadasDelDia, medicinaPendiente, marcarMedicina,
   arrancarPomodoro, cortarPomodoro, cerrarFasePomodoro, relojPomodoro,
   etapaBicho, puedeEclosionar, nombreBicho,
   buscarDisfrazEnCesped,
@@ -59,6 +61,7 @@ function interactuar(o) {
     case 'mesa': accionMesa(); break;
     case 'inodoro': accionInodoro(); break;
     case 'espejo': accionEspejo(); break;
+    case 'medicinas': accionPastillero(); break;
     case 'diego': accionDiego(); break;
     case 'compu': accionSilla(o); break;
     case 'sillon': accionSillon(o); break;
@@ -216,6 +219,97 @@ function confirmarMision(id) {
   dialogo(cola);
 }
 
+/* ============================================================================
+ *  EL PASTILLERO DE LA COCINA
+ *
+ *  Las tres tomas del día. Es el registro más importante del juego, así que
+ *  interactuar tiene que ser lo más corto posible: A, la toma, listo. La franja
+ *  que está abierta ahora va primera en la lista, así casi siempre la opción ya
+ *  seleccionada al abrirse el diálogo es la que Kath vino a marcar.
+ *
+ *  Deshacer NO está acá: vive en la pestaña 💊. Un botón de "me equivoqué"
+ *  pegado al de marcar es la forma más fácil de tocar el equivocado justo
+ *  cuando importa.
+ * ==========================================================================*/
+function lineaTomas() {
+  return tomasDelDia().map(({ toma, ts }) =>
+    `${toma.icono} ${toma.nombre}: ${ts ? horaBonita(ts) : '—'}`).join('\n');
+}
+
+function accionPastillero() {
+  const pendientes = tomasDelDia().filter((x) => !x.ts).map((x) => x.toma);
+
+  if (!pendientes.length) {
+    dialogo([{
+      t: `${MEDICINAS.icono} El pastillero\nHoy están las tres tomadas.\n\n${lineaTomas()}\n\nGracias por cuidarte, ${CONFIG.jugadora}.`,
+    }]);
+    return;
+  }
+
+  // La de la franja abierta primero: es la que Kath viene a marcar.
+  const ahora = medicinaPendiente();
+  const orden = [...pendientes].sort((x, y) =>
+    (ahora && y.id === ahora.id ? 1 : 0) - (ahora && x.id === ahora.id ? 1 : 0));
+
+  const encabezado = ahora
+    ? `Es la hora de ${ahora.recuerdo}.`
+    : 'Todavía te falta alguna.';
+
+  dialogo([{
+    t: `${MEDICINAS.icono} El pastillero\n${encabezado}\n\n${lineaTomas()}`,
+    opciones: [
+      ...orden.map((t) => ({ txt: `${t.icono} ${t.nombre}`, cb: () => confirmarMedicina(t.id) })),
+      { txt: 'Ahora no', cb: () => dialogo([{ t: 'Está bien. Cuando la tomes, marcala y queda anotada con la hora.' }]) },
+    ],
+  }]);
+}
+
+function confirmarMedicina(id) {
+  const r = marcarMedicina(id);
+  if (!r) return;
+  sonar('ok');
+  if (r.xp) mostrarRecompensa(r.xp, r.oro);
+
+  const faltan = TOMAS.length - tomadasDelDia(r.dia);
+  const cola = [{
+    t: `${r.toma.icono} ${r.toma.nombre} — anotada.\n\n🕒 ${fechaHoraBonita(r.ts)}`,
+    premio: r.xp ? `+${r.xp} XP   +${r.oro} 💰` : null,
+  }];
+  if (faltan > 0) {
+    cola.push({ t: `Te ${faltan === 1 ? 'queda' : 'quedan'} ${faltan} ${faltan === 1 ? 'toma' : 'tomas'} para completar el día.` });
+  } else {
+    cola.push({ t: `Las tres del día, completas.\nEsto es lo que más me importa que hagas, ${CONFIG.jugadora}.`, fanfarria: true });
+  }
+  // El día completo puede destrabar un accesorio: es lo que las medicinas pagan
+  // en vez de monedas (ver config/disfraces.js).
+  if (r.disfraz) agregarHallazgo(cola, r.disfraz);
+  if (r.subio) {
+    const nivelAntes = EST.nivel - r.subio;
+    for (let i = 0; i < r.subio; i++) {
+      cola.push({ t: `¡SUBISTE AL NIVEL ${nivelAntes + i + 1}!\n${fraseNivel(nivelAntes + i + 1)}`, fanfarria: true });
+    }
+    agregarEvolucion(cola, nivelAntes, EST.nivel);
+  }
+  dialogo(cola);
+}
+
+/* Marcar una toma desde la pestaña 💊, que es el otro camino además del
+   pastillero. Acá no se abre el diálogo largo —Kath está mirando el registro,
+   no hablando con un mueble— pero un accesorio nuevo sí interrumpe: cerrar el
+   menú y mostrarlo es la única forma de que se entere, y es el premio de haber
+   completado el día. */
+function marcarToma(id) {
+  const r = marcarMedicina(id);
+  if (!r) return null;
+  sonar('ok');
+  if (r.xp) mostrarRecompensa(r.xp, r.oro);
+  if (r.disfraz) {
+    cerrarMenu();
+    dialogo(agregarHallazgo([], r.disfraz));
+  }
+  return r;
+}
+
 /* Evolución del compañero: se detecta comparando el nivel antes y después de
    ganar XP, no con un flag guardado — así vale para cualquier salto (incluso
    de varios niveles de una) sin acordarse de tocar dos lados. La primera
@@ -231,17 +325,27 @@ function agregarEvolucion(cola, nivelAntes, nivelAhora) {
   });
 }
 
+/* Cómo se anuncia un accesorio nuevo, venga del césped o del pastillero: dos
+   pantallas, la primera sin decir qué es. Está en un solo lugar porque los dos
+   hallazgos tienen que sentirse igual — el del pastillero no es un premio de
+   segunda por no haber aparecido en el pasto. */
+function agregarHallazgo(cola, d) {
+  sonar('eclosion');
+  dispararFlash();
+  cola.push({ t: `${d.hallazgo}`, fanfarria: true });
+  cola.push({
+    t: `¡${d.icono} ${d.nombre}!\n${d.desc}\n\nLo guardaste en el placard del cuarto.`,
+    fanfarria: true,
+  });
+  return cola;
+}
+
 /* Lo llama el motor cada vez que Kath termina un paso sobre el césped. El
    sorteo y la colección viven en gameLogic; acá sólo queda avisarle. */
 function alPisarCesped() {
   const d = buscarDisfrazEnCesped();
   if (!d) return;
-  sonar('eclosion');
-  dispararFlash();
-  dialogo([
-    { t: `${d.hallazgo}`, fanfarria: true },
-    { t: `¡${d.icono} ${d.nombre}!\n${d.desc}\n\nLo guardaste en el placard del cuarto.`, fanfarria: true },
-  ]);
+  dialogo(agregarHallazgo([], d));
 }
 
 function fraseNivel(n) {
@@ -319,6 +423,15 @@ function accionDiego() {
   }
   if (EST.oro >= 30) {
     cola.push({ t: `Tenés ${EST.oro} 💰 juntadas.\nEl puesto de premios está en el living. Yo los cumplo.` });
+  }
+
+  /* Las medicinas, de vez en cuando. Sólo si hay una toma pendiente en SU
+     franja —o sea, ahora mismo— y ni siquiera siempre: ver MEDICINAS.chanceDiego.
+     Diego informa cómo viene el día, no controla la medicación; un recordatorio
+     en cada charla se lee como que desconfía. */
+  const med = medicinaPendiente();
+  if (med && Math.random() < MEDICINAS.chanceDiego) {
+    cola.push({ t: `Ah, y una cosa.\n¿Tomaste ${med.recuerdo}? El pastillero está en la mesada de la cocina.` });
   }
 
   /* La pregunta va siempre última, porque es lo único que espera respuesta: en
@@ -746,6 +859,10 @@ function iniciar() {
       const p = pomodoroEnCurso();
       return p && { fase: p.fase, txt: relojPomodoro(p.restaMs), parte: p.restaMs / p.largoMs };
     },
+    /* La burbuja del pastillero. Se prende sólo mientras la franja está abierta
+       y la toma sin marcar: fuera de eso el pastillero se ve como cualquier
+       mueble, que es lo que lo separa de un cartel prendido todo el día. */
+    medicinaPendiente: () => !!medicinaPendiente(),
   });
 
   construirTiles();
@@ -819,6 +936,7 @@ Las misiones se reiniciaron. ${EST.racha > 0 ? `Racha: ${EST.racha} 🔥` : ''}`
 
 export {
   iniciar, empezar, pulsarA, pulsarB, abrirMenu, cerrarMenu, armarTeclado, dialogo,
+  marcarToma,
   guardarExtra,
   empezarPomodoro, frenarPomodoro, revisarPomodoro,
 };

@@ -5,6 +5,14 @@ import { sonar } from '../../engine/sonido.js';
 /* El placard del cuarto. Muestra la colección entera y no sólo lo encontrado:
    los que faltan aparecen en gris con una silueta, que es lo que convierte
    esto en una colección y no en una lista de cosas sueltas. */
+/* Qué dice un accesorio que todavía no tiene, según de dónde sale. Sin esto,
+   los del pastillero parecen escondidos en el pasto como los demás y Kath
+   caminaría por el césped esperando algo que no va a aparecer nunca ahí. */
+const PISTA = {
+  cesped: 'Todavía no lo encontraste. Anda escondido en el césped.',
+  medicinas: 'Se destraba cuidando tus medicinas, no aparece en el césped.',
+};
+
 export default function TabPlacard() {
   const encontrados = DISFRACES.filter((d) => EST.disfraces.includes(d.id));
 
@@ -28,7 +36,7 @@ export default function TabPlacard() {
               <div className="ico">{tiene ? d.icono : '❔'}</div>
               <div className="txt">
                 <b>{tiene ? d.nombre : '???'}</b>
-                <small>{tiene ? d.desc : 'Todavía no lo encontraste.'}</small>
+                <small>{tiene ? d.desc : PISTA[d.via] || 'Todavía no lo encontraste.'}</small>
               </div>
               <button
                 className="btnCanje"

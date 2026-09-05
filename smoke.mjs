@@ -163,7 +163,10 @@ console.log('modulo importado, exports:', Object.keys(mod), '\n');
    haya internet ni escribir en la base de producción. Más abajo se vuelve a
    prender, pero apuntando al Worker corriendo en este mismo proceso. */
 const cfg = (await vite.ssrLoadModule('/src/config/config.js')).CONFIG;
-const { DISFRACES } = await vite.ssrLoadModule('/src/config/disfraces.js');
+const cfgDisfraces = await vite.ssrLoadModule('/src/config/disfraces.js');
+const { DISFRACES } = cfgDisfraces;
+const DEL_CESPED = cfgDisfraces.DISFRACES_CESPED;
+const DE_MEDICINAS = cfgDisfraces.DISFRACES_MEDICINAS;
 cfg.nube = '';
 
 paso('montarCanvas + iniciar()', () => {
@@ -478,21 +481,27 @@ paso('fusion: los canjes no se duplican ni se comen', () => {
   igual(f.oro, 110, 'oro = 200 ganadas - 30 del abrazo - 60 de la peli');
 });
 
-paso('disfraces: aparecen todos y no se repiten', () => {
+paso('disfraces: aparecen todos los del cesped, y ninguno del pastillero', () => {
   const est = logica.obtenerEstado();
   est.disfraces = [];
   const vistos = new Set();
   // El sorteo es al azar, así que se camina "mucho" y se comprueba el
   // invariante que importa: nunca sale dos veces el mismo, y con suficientes
   // pasos aparecen todos.
-  for (let i = 0; i < 40000 && vistos.size < DISFRACES.length; i++) {
+  for (let i = 0; i < 40000 && vistos.size < DEL_CESPED.length; i++) {
     const d = logica.buscarDisfrazEnCesped();
     if (!d) continue;
     if (vistos.has(d.id)) throw new Error('salio dos veces: ' + d.id);
+    if (d.via !== 'cesped') throw new Error('salio en el pasto uno del pastillero: ' + d.id);
     vistos.add(d.id);
   }
-  igual(vistos.size, DISFRACES.length, 'aparecieron todos');
-  igual(logica.buscarDisfrazEnCesped(), null, 'con la coleccion completa ya no aparece nada');
+  igual(vistos.size, DEL_CESPED.length, 'aparecieron todos los del cesped');
+  // Con los del cesped completos ya no sale nada, aunque falten los del
+  // pastillero: caminar no puede destrabar la recompensa de cuidarse.
+  igual(logica.buscarDisfrazEnCesped(), null, 'con los del cesped juntados ya no aparece nada');
+  if (!DE_MEDICINAS.every((d) => !est.disfraces.includes(d.id))) {
+    throw new Error('el cesped entrego uno del pastillero');
+  }
 });
 
 const fs = await import('node:fs');
@@ -576,6 +585,27 @@ paso('mapa: ningun mueble tapa una puerta ni pisa a otro mueble', () => {
     }
   }
   if (puertas < 6) throw new Error('se perdieron puertas del mapa: ' + puertas);
+});
+
+const medCfg = (await vite.ssrLoadModule('/src/config/medicinas.js')).MEDICINAS;
+
+/* Un instante de HOY a la hora que se pida. Las franjas se prueban con horas
+   puestas a mano y no con el reloj de verdad: si no, la suite pasaria o
+   fallaria segun la hora a la que se la corre. */
+const enHora = (h, m) => { const d = new Date(); d.setHours(h, m || 0, 0, 0); return d.getTime(); };
+
+paso('medicinas: el pastillero esta en la cocina y se puede tocar', () => {
+  // El registro mas importante del juego entra por este mueble: si queda sin
+  // una casilla libre enfrente, Kath no puede marcar nada y no se entera hasta
+  // que va a tomarlas.
+  const past = mapaCfg.OBJETOS.find((o) => o.accion === 'medicinas');
+  if (!past) throw new Error('no hay pastillero en el mapa');
+  const abajo = mapaCfg.MAPA[past.y + 1][past.x];
+  igual(abajo, 'K', 'la casilla de abajo es piso de cocina');
+  if (mapaCfg.SOLIDOS.has(abajo)) throw new Error('no se puede parar enfrente');
+  if (mapaCfg.OBJETOS.some((o) => o.x === past.x && o.y === past.y + 1)) {
+    throw new Error('hay un mueble justo enfrente del pastillero');
+  }
 });
 
 /* ---------------------------------------------------------------------------
@@ -714,6 +744,19 @@ const dibujo = await vite.ssrLoadModule('/src/engine/drawing.js');
  *  (que hay que migrar sin perder nada) y la fusión de dos dispositivos, donde
  *  "sumar" está bien para un contador y muy mal para una hora.
  * ------------------------------------------------------------------------- */
+paso('medicinas: el boton A frente al pastillero abre las tres tomas', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  const past = mapaCfg.OBJETOS.find((o) => o.accion === 'medicinas');
+  pararseFrenteA(past, { x: past.x, y: past.y + 1 }, 3);
+  mod.pulsarA();
+  const act = dlg.getActual();
+  if (!act || !act.opciones) throw new Error('no abrio el dialogo con opciones');
+  igual(act.opciones.length, medCfg.tomas.length + 1, 'las tres tomas y "Ahora no"');
+  dlg.cerrarDialogo();
+  uiSt.setModo('juego');
+});
+
 paso('Diego: parado afuera de la casa, sin taparle el paso a nadie', () => {
   const d = mapaCfg.OBJETOS.find((o) => o.art === 'diego');
   if (!d) throw new Error('Diego no esta en el mundo: FLAGS.diego apagado');
@@ -1012,6 +1055,111 @@ paso('misiones: cada vez cumplida deja su hora', () => {
   igual(logica.horasDe('cama').length, 0, 'una mision sin hacer no tiene horas');
 });
 
+paso('medicinas: cada franja es la de su horario', () => {
+  igual(logica.franjaDeHora(enHora(9)).id, 'desayuno', 'a la manana');
+  igual(logica.franjaDeHora(enHora(17)).id, 'merienda', 'a la tarde');
+  igual(logica.franjaDeHora(enHora(21)).id, 'cena', 'a la noche');
+  igual(logica.franjaDeHora(enHora(13)), null, 'entre franjas no hay ninguna abierta');
+
+  // El dia del juego arranca a las 4 AM: la 1 de la manana sigue siendo anoche,
+  // asi que la cena marcada a esa hora tiene que caer en el dia de ayer y no
+  // estrenar el de hoy.
+  igual(logica.franjaDeHora(enHora(1)).id, 'cena', 'la 1 AM sigue siendo la cena de anoche');
+  const ayer = new Date(); ayer.setHours(12, 0, 0, 0); ayer.setDate(ayer.getDate() - 1);
+  igual(logica.diaDeJuego(enHora(1)), logica.diaDeJuego(ayer.getTime()), 'y se anota en el dia de ayer');
+});
+
+paso('medicinas: marcar deja la hora y paga una sola vez', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  const est = logica.obtenerEstado();
+  const oroAntes = est.oro;
+  const t = enHora(9, 30);
+  const dia = logica.diaDeJuego(t);
+
+  const xpAntes = est.xp;
+  const ganadoAntes = est.oroGanado;
+
+  const r = logica.marcarMedicina('desayuno', t);
+  igual(r.xp, medCfg.xp, 'pago el XP');
+  igual(est.xp, xpAntes + medCfg.xp, 'y quedo sumado');
+  // Las medicinas NO pagan monedas: son algo que hay que hacer igual, y el oro
+  // las pondria a competir con lavar la ropa. Su premio son los accesorios.
+  igual(medCfg.oro, 0, 'la configuracion no paga oro');
+  igual(est.oro, oroAntes, 'no dio monedas');
+  igual(est.oroGanado, ganadoAntes, 'ni ensucio el oro ganado de toda la vida');
+  igual(logica.horaDeToma('desayuno', dia), t, 'quedo la hora exacta');
+  igual(logica.marcarMedicina('desayuno', t), null, 'marcarla de nuevo no hace nada');
+
+  // Deshacer y volver a marcar no puede volver a pagar: seria la forma mas
+  // facil de subir de nivel del juego, y un registro que se puede fabricar
+  // deja de servir como registro.
+  if (!logica.desmarcarMedicina('desayuno', dia)) throw new Error('no se pudo deshacer');
+  igual(logica.horaDeToma('desayuno', dia), 0, 'quedo deshecha');
+  igual(logica.marcarMedicina('desayuno', t).xp, 0, 'volver a marcarla no vuelve a pagar');
+  igual(est.xp, xpAntes + medCfg.xp, 'el XP quedo igual');
+  igual(logica.tomadasDelDia(dia), 1, 'una de las tres');
+  igual(logica.desmarcarMedicina('merienda', dia), false, 'no se puede deshacer algo que no se marco');
+});
+
+paso('medicinas: el recordatorio existe solo dentro de la franja', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  igual(logica.medicinaPendiente(enHora(13)), null, 'fuera de franja no hay nada pendiente');
+  igual(logica.medicinaPendiente(enHora(9)).id, 'desayuno', 'en franja y sin marcar, pendiente');
+  logica.marcarMedicina('desayuno', enHora(9));
+  igual(logica.medicinaPendiente(enHora(9)), null, 'marcada, el recordatorio se apaga');
+});
+
+paso('medicinas: la racha cuenta los dias con las tres', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  const est = logica.obtenerEstado();
+  const diaMenos = (n) => {
+    const d = new Date(est.dia + 'T12:00:00');
+    d.setDate(d.getDate() - n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+      + '-' + String(d.getDate()).padStart(2, '0');
+  };
+  const tres = { desayuno: 100, merienda: 200, cena: 300 };
+  est.meds = { [diaMenos(1)]: { ...tres }, [diaMenos(2)]: { ...tres } };
+  // Hoy todavia no tiene ninguna, y eso NO corta: a las nueve de la manana no
+  // hay nada que reprochar.
+  igual(logica.rachaMedicinas(), 2, 'dos dias completos para atras');
+  est.meds[diaMenos(3)] = { desayuno: 100 };
+  igual(logica.rachaMedicinas(), 2, 'un dia a medias corta la racha');
+  igual(logica.diasDeMedicinas().length, 4, 'el registro lista los dias anotados mas el de hoy');
+});
+
+paso('medicinas: completar el dia destraba accesorios, y el cesped no los da', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  const est = logica.obtenerEstado();
+  const primero = DE_MEDICINAS[0];
+
+  igual(logica.marcarMedicina('desayuno', enHora(9)).disfraz, null, 'con una sola no hay nada');
+  igual(logica.marcarMedicina('merienda', enHora(17)).disfraz, null, 'con dos tampoco');
+  const r = logica.marcarMedicina('cena', enHora(21));
+  igual(r.disfraz && r.disfraz.id, primero.id, 'el dia completo destraba el primero');
+  if (!est.disfraces.includes(primero.id)) throw new Error('no quedo guardado en el placard');
+  igual(logica.buscarDisfrazDeMedicinas(est.dia), null, 'y no entrega dos por el mismo dia');
+
+  // El que sigue pide mas racha que la de un dia: no se puede adelantar
+  // completando el mismo dia dos veces.
+  const segundo = DE_MEDICINAS[1];
+  if (est.disfraces.includes(segundo.id)) throw new Error('entrego uno que pedia mas racha');
+  if (!(segundo.rachaMed > primero.rachaMed)) throw new Error('la lista quedo desordenada por racha');
+});
+
+paso('medicinas: un dia viejo completo no destraba nada', () => {
+  logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
+  logica.chequearDia();
+  const est = logica.obtenerEstado();
+  est.meds = { '2020-01-01': { desayuno: 1, merienda: 2, cena: 3 } };
+  igual(logica.buscarDisfrazDeMedicinas('2020-01-01'), null, 'la racha de hoy ya lo tuvo en cuenta');
+  igual(est.disfraces.length, 0, 'y el placard quedo vacio');
+});
+
 paso('secundarias: se anotan con su hora, pagan, y tienen tope diario', () => {
   logica.reemplazarEstado(logica.EST_INICIAL(), { guardarTambien: false });
   logica.chequearDia();
@@ -1257,6 +1405,28 @@ paso('migracion v2 -> v4 no inventa horas, secundarias ni pomodoros', () => {
   igual(nuevo.pomodoros.length, 0, 'sin pomodoros');
   igual(nuevo.pomo, null, 'y sin ninguno andando');
   igual(nuevo.hoy.cama, 1, 'y la mision de hoy sigue estando');
+});
+
+paso('migracion v4 -> v5 no inventa medicinas', () => {
+  // Un registro de medicacion inventado es peor que uno que empieza hoy: de
+  // esta pestana hay que poder fiarse.
+  const viejo = { v: 4, nivel: 1, xp: 0, oro: 0, hoy: {}, canjeados: [] };
+  const nuevo = logica.migrar(viejo);
+  igual(nuevo.v, logica.V_ACTUAL, 'version');
+  igual(Object.keys(nuevo.meds).length, 0, 'el registro arranca vacio');
+});
+
+paso('fusion: una medicina tomada le gana a una deshecha', () => {
+  const a = partidaBase({ seq: 1, meds: { '2026-08-15': { desayuno: 900, cena: 0, merienda: 1500 } } });
+  const b = partidaBase({
+    seq: 9,
+    meds: { '2026-08-15': { desayuno: 0, merienda: 1000 }, '2026-08-14': { cena: 500 } },
+  });
+  const f = fusion.fusionar(a, b);
+  igual(f.meds['2026-08-15'].desayuno, 900, 'tomada le gana a deshecha, aunque el otro escribio despues');
+  igual(f.meds['2026-08-15'].merienda, 1000, 'entre dos horas gana la mas temprana');
+  igual(f.meds['2026-08-15'].cena, 0, 'la deshecha sigue deshecha, y asi no vuelve a pagar');
+  igual(f.meds['2026-08-14'].cena, 500, 'los dias que tenia uno solo de los dos no se pierden');
 });
 
 paso('fusion: las horas de hoy no se intercalan entre dos dispositivos', () => {
@@ -1626,6 +1796,7 @@ for (const [nombre, ruta] of [
   ['Dialogo', '/src/components/Dialogo.jsx'],
   ['Menu', '/src/components/Menu/Menu.jsx'],
   ['TabMisiones', '/src/components/Menu/TabMisiones.jsx'],
+  ['TabMedicinas', '/src/components/Menu/TabMedicinas.jsx'],
   ['TabProgreso', '/src/components/Menu/TabProgreso.jsx'],
   ['TabPomodoro', '/src/components/Menu/TabPomodoro.jsx'],
   ['TabPremios', '/src/components/Menu/TabPremios.jsx'],

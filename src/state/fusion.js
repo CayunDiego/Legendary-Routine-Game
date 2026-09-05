@@ -1,5 +1,6 @@
 import { MISIONES } from '../config/misiones.js';
 import { PREMIOS } from '../config/premios.js';
+import { MEDICINAS } from '../config/medicinas.js';
 import { xpTotal, desdeXpTotal } from './niveles.js';
 
 /* ---------------------------------------------------------------------------
@@ -110,6 +111,36 @@ function fusionarPomo(a, b) {
   const vivos = [a, b].filter((p) => p && Number(p.hasta) > ahora);
   if (!vivos.length) return null;
   return vivos.reduce((x, y) => (Number(y.hasta) > Number(x.hasta) ? y : x));
+}
+
+/* --- medicinas --------------------------------------------------------------
+   Indexado por fecha y por toma, así que la unión es directa, pero el empate no
+   se resuelve por `seq`: gana el valor más alto, y eso alcanza porque los tres
+   estados están ordenados solos —tomada (un Date.now()) > deshecha (0) > nunca
+   (la clave no está)—.
+
+   O sea: si un dispositivo la tiene tomada y el otro deshecha, queda tomada. Es
+   la regla de oro de este archivo aplicada al registro que más importa: nunca
+   se le borra a Kath una toma que hizo. Entre dos horas distintas del mismo día
+   gana la más temprana, que es cuando pasó de verdad; la más tarde es el otro
+   dispositivo enterándose. */
+function fusionarMeds(a, b) {
+  const out = {};
+  const A = a || {}, B = b || {};
+  for (const dia of new Set([...Object.keys(A), ...Object.keys(B)])) {
+    const ra = A[dia] || {}, rb = B[dia] || {};
+    const reg = {};
+    for (const id of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
+      const va = Number(ra[id]) || 0, vb = Number(rb[id]) || 0;
+      if (va > 0 && vb > 0) reg[id] = Math.min(va, vb);
+      else reg[id] = Math.max(va, vb);
+    }
+    out[dia] = reg;
+  }
+  // El mismo tope que usa podarMeds(): las fechas son ISO, así que ordenan solas.
+  const dias = Object.keys(out).sort();
+  for (const d of dias.slice(0, Math.max(0, dias.length - MEDICINAS.historia))) delete out[d];
+  return out;
 }
 
 /* --- historial ------------------------------------------------------------ */
@@ -253,6 +284,9 @@ function fusionar(a, b) {
   // Los pomodoros tampoco se archivan al cambiar el día.
   out.pomodoros = fusionarPomodoros(a.pomodoros, b.pomodoros);
   out.pomo = fusionarPomo(a.pomo, b.pomo);
+  // Las medicinas tampoco se archivan al cambiar el día: son el registro, y se
+  // unen siempre, esté cada dispositivo en el día que esté.
+  out.meds = fusionarMeds(a.meds, b.meds);
 
   // --- oro: no se puede tomar el máximo -------------------------------------
   // El oro baja al canjear, así que el número en sí no dice quién está más
@@ -276,6 +310,6 @@ function fusionar(a, b) {
 }
 
 export {
-  fusionar, fusionarHoy, fusionarHoyEn, fusionarExtras,
+  fusionar, fusionarHoy, fusionarHoyEn, fusionarExtras, fusionarMeds,
   fusionarHistorial, fusionarCanjeados, contarHechas,
 };

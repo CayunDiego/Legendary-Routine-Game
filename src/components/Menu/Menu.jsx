@@ -4,6 +4,7 @@ import { getModo, getPestana, setPestana } from '../../state/ui.js';
 import { sonar } from '../../engine/sonido.js';
 import { useAcciones } from '../../state/GameContext.jsx';
 import TabMisiones from './TabMisiones.jsx';
+import TabMedicinas from './TabMedicinas.jsx';
 import TabProgreso from './TabProgreso.jsx';
 import TabPremios from './TabPremios.jsx';
 import TabPomodoro from './TabPomodoro.jsx';
@@ -13,6 +14,9 @@ import TabAjustes from './TabAjustes.jsx';
 
 const TABS = [
   ['misiones', 'Hoy'],
+  // Segunda de todas: es el registro más importante de la aplicación, y el que
+  // Kath tiene que poder mirar sin buscar (¿la tomé? ¿a qué hora?).
+  ['medicinas', '💊'],
   ['progreso', 'Progreso'],
   // Va pegada a "Hoy" y no al final porque es de las que se abren seguido: se
   // llega desde la notebook, pero también desde el menú en el medio de un
@@ -55,6 +59,7 @@ export default function Menu() {
 
         <div id="menuCuerpo" ref={cuerpo}>
           {pestana === 'misiones' && <TabMisiones />}
+          {pestana === 'medicinas' && <TabMedicinas />}
           {pestana === 'progreso' && <TabProgreso />}
           {pestana === 'pomodoro' && <TabPomodoro />}
           {pestana === 'premios' && <TabPremios />}

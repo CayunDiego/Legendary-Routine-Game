@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo } from 'react';
 import { CONFIG } from '../config/config.js';
 import {
   empezar, pulsarA, pulsarB, abrirMenu, cerrarMenu, dialogo,
-  empezarPomodoro, frenarPomodoro,
+  empezarPomodoro, frenarPomodoro, marcarToma,
 } from '../game/juego.js';
 
 /* ---------------------------------------------------------------------------
@@ -35,6 +35,12 @@ export function GameProvider({ children }) {
        enterarse. */
     empezarPomodoro,
     frenarPomodoro,
+
+    /* Marcar una medicina desde la pestaña. Pasa por juego.js y no por la
+       pestaña directo porque un día completo puede destrabar un accesorio, y
+       eso cierra el menú y abre un diálogo — dos cosas que un componente de
+       lista no tiene por qué manejar. */
+    marcarToma,
 
     /* Canjear un premio cierra el menú y muestra el cupón. */
     canjearPremio(p) {
